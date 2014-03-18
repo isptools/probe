@@ -28,6 +28,8 @@ npm install pm2 -g
 echo "OK"
 echo "-------------------------------------------------------------------------"
 echo "Startando PM2"
+rm /etc/init.d/pm2-init.sh
+pm2 stop all
 pm2 start app.js -i max --name ISPTools
 echo "OK"
 echo "-------------------------------------------------------------------------"
