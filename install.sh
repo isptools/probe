@@ -5,8 +5,6 @@ echo "Instalando ISPTools"
 rm -r /opt/tklweb-cp
 mkdir /opt/tklweb-cp
 cd /opt/tklweb-cp
-echo "Limpando pastas"
-rm -r *
 echo "OK"
 echo "-------------------------------------------------------------------------"
 echo "Atualizando Node.js"
