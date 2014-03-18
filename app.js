@@ -1,10 +1,9 @@
-var colors = require('colors');
 console.log('');
 console.log('');
 console.log('');
 console.log('------------------------------------------------------');
-console.log('- ISP Tools - www.isptools.com.br                    -'.green);
-console.log('- Giovane Heleno (www.giovane.pro.br)                -'.yellow);
+console.log('- ISP Tools - www.isptools.com.br                    -');
+console.log('- Giovane Heleno (www.giovane.pro.br)                -');
 console.log('------------------------------------------------------');
 console.log('Service started... litening port 8000.');
 console.log('');
@@ -39,7 +38,7 @@ app.configure(function () {
         sID++;
         sID=(sID>=65535)?0:sID;
         //console.log(sID);
-        //console.log((hora+" - "+res.connection.remoteAddress+' - '+req.url.toUpperCase()).green);
+        //console.log((hora+" - "+res.connection.remoteAddress+' - '+req.url.toUpperCase()));
         next();
     });
 });
