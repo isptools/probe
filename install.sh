@@ -29,12 +29,15 @@ echo "OK"
 echo "-------------------------------------------------------------------------"
 echo "Startando PM2"
 rm /etc/init.d/pm2-init.sh
-pm2 stop all
+pm2 dump
+pm2 delete all
+pm2 kill
 pm2 start app.js -i max --name ISPTools
+pm2 web
 echo "OK"
 echo "-------------------------------------------------------------------------"
 echo "Daemon PM2"
-pm2 startup ubuntu
+pm2 -f startup ubuntu
 echo "OK"
 echo "-------------------------------------------------------------------------"
 echo "FIM"
