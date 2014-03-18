@@ -1,7 +1,11 @@
 #!/bin/bash
 clear
 echo "-------------------------------------------------------------------------"
-echo "Instalando ISPTools"
+echo "Instalando SUDO"
+apt-get install sudo
+echo "OK"
+echo "-------------------------------------------------------------------------"
+echo "Preparando diretório"
 rm -r /opt/tklweb-cp
 mkdir /opt/tklweb-cp
 cd /opt/tklweb-cp
