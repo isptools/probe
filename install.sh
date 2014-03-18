@@ -1,6 +1,14 @@
 #!/bin/bash
 clear
 echo "-------------------------------------------------------------------------"
+echo "Atualizando Data/Hora"
+date
+echo "America/Sao_Paulo" | sudo tee /etc/timezone
+sudo dpkg-reconfigure --frontend noninteractive tzdata
+ntpdate pool.ntp.br
+date
+echo "OK"
+echo "-------------------------------------------------------------------------"
 echo "Instalando SUDO"
 apt-get update
 apt-get install sudo
