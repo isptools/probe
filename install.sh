@@ -2,9 +2,8 @@
 clear
 echo "-------------------------------------------------------------------------"
 echo "Instalando ISPTools"
-cd /opt
-rm -r /tklweb-cp
-mkdir /tklweb-cp
+rm -r /opt/tklweb-cp
+mkdir /opt/tklweb-cp
 cd /opt/tklweb-cp
 echo "Limpando pastas"
 rm -r *
