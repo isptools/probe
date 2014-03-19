@@ -262,11 +262,10 @@ app.get('/DNS/:method/:id', function (req, res) {
 app.get('/HTTP/:id', function (req, res) {
     var attrIP = req.params.id;
     attrIP = attrIP.toString();
-    attrIP = unescape(attrIP);
     if (url.parse(attrIP).protocol == null){
         attrIP = "http://"+attrIP;
-        
     }
+    attrIP = unescape(attrIP);
 
     if (url.parse(attrIP).protocol == 'http:') {
         http.get(attrIP, function (e) {
