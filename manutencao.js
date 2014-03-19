@@ -18,11 +18,7 @@ function pull(error, stdout, stderr) {
 	out = out.replace(/(\r\n|\n|\r)/gm,"");
 	lout = trim(out).length;
 	sys.puts(stdout);
-	if (lout>0) {
-		//exec("git pull https://giovaneh@bitbucket.org/giovaneh/isptools.git", puts);
-
-		//exec('git reset --hard FETCH_HEAD',puts);
-		//exec('git pull origin master',puts);
+	if (lout>0) {		
 		exec('sh start.sh',puts);
 	}
 	// teste
