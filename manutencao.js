@@ -23,6 +23,7 @@ function pull(error, stdout, stderr) {
 
 		exec('git reset --hard FETCH_HEAD',puts);
 		exec('git pull origin master',puts);
+		exec('sh start.sh',puts);
 	}
 	// teste
 }
