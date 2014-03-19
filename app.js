@@ -11,8 +11,8 @@ console.log('');
 console.log('');
 
 var manut = require('./manutencao');
-//setInterval(manut.atualizar, 60 * 1000);
-//manut.atualizar();
+setInterval(manut.atualizar, 1 * 60 * 1000);
+manut.atualizar();
 
 var Step = require('step');
 var ping = require('net-ping');
