@@ -9,7 +9,8 @@ pm2 delete all
 echo "-------------------------------------------------------------------------"
 pm2 kill
 echo "-------------------------------------------------------------------------"
-git pull https://giovaneh@bitbucket.org/giovaneh/isptools.git
+git reset --hard FETCH_HEAD
+git pull origin master
 echo "-------------------------------------------------------------------------"
 pm2 start app.js -f -i max --name ISPTools
 echo "-------------------------------------------------------------------------"

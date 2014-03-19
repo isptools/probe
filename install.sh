@@ -32,8 +32,8 @@ clear
 echo "-------------------------------------------------------------------------"
 echo "Baixando ISPTools"
 git init
-echo "OK"
-git pull https://giovaneh@bitbucket.org/giovaneh/isptools.git
+git remote add origin https://giovaneh@bitbucket.org/giovaneh/isptools.git
+git pull origin master
 echo "OK"
 clear
 echo "-------------------------------------------------------------------------"
