@@ -5,9 +5,15 @@ module.exports = {
   atualizar: function () {
     
   	console.log(Date());
-	exec("git pull https://giovaneh@bitbucket.org/giovaneh/isptools.git", puts);
+  	exec("git status --porcelain", pull);
+	//exec("git pull https://giovaneh@bitbucket.org/giovaneh/isptools.git", puts);
 
     return true;
   }
 };
-function puts(error, stdout, stderr) { sys.puts(stdout) }
+function puts(error, stdout, stderr) {
+	sys.puts(stdout);
+}
+function pull(error, stdout, stderr) {
+	console.log(stdout.lenght);
+}
