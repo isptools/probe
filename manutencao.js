@@ -15,6 +15,12 @@ function puts(error, stdout, stderr) {
 	sys.puts(stdout);
 }
 function pull(error, stdout, stderr) {
-	console.log(stdout.lenght);
+	console.log('------------');
+	console.log(error);
+	console.log('------------');
+	console.log(stdout);
+	console.log('------------');
+	console.log(stderr);
+	console.log('------------');
 	// teste
 }
