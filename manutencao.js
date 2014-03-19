@@ -16,4 +16,5 @@ function puts(error, stdout, stderr) {
 }
 function pull(error, stdout, stderr) {
 	console.log(stdout.lenght);
+	// teste
 }
