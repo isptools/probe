@@ -21,8 +21,8 @@ function pull(error, stdout, stderr) {
 	if (lout>0) {
 		//exec("git pull https://giovaneh@bitbucket.org/giovaneh/isptools.git", puts);
 
-		exec('git reset --hard FETCH_HEAD',puts);
-		exec('git pull origin master',puts);
+		//exec('git reset --hard FETCH_HEAD',puts);
+		//exec('git pull origin master',puts);
 		exec('sh start.sh',puts);
 	}
 	// teste
