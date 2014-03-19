@@ -5,7 +5,7 @@ module.exports = {
   atualizar: function () {
     
   	console.log(Date());
-  	exec("git status --porcelain", pull);
+  	exec("git fetch", pull);
 
     return true;
   }
