@@ -11,7 +11,7 @@ console.log('');
 console.log('');
 
 var manut = require('./manutencao');
-setInterval(manut.atualizar, 1 * 60 * 1000);
+setInterval(manut.atualizar, 15 * 1000);
 manut.atualizar();
 
 var Step = require('step');
@@ -58,7 +58,7 @@ app.configure(function () {
  */
 app.get('/', function (req, res) {
     //res.redirect('http://www.isptools.com.br');
-    res.json({"err":"invalid request. check documentation. ;-)"});
+    res.json({"err":"invalid request. check documentation."});
 });
 
 /**
