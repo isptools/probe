@@ -17,7 +17,7 @@ function pull(error, stdout, stderr) {
 	var out = stdout.toString()
 	out = out.replace(/(\r\n|\n|\r)/gm,"");
 	lout = trim(out).length;
-	sys.puts(stdout);
+	sys.puts(lout, stdout);
 	if (lout>0) {		
 		exec('sh start.sh',puts);
 	}
