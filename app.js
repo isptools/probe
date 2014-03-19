@@ -58,7 +58,7 @@ app.configure(function () {
  */
 app.get('/', function (req, res) {
     //res.redirect('http://www.isptools.com.br');
-    res.json({"err":"invalid request. check documentation. Funcionou"});
+    res.json({"err":"invalid request. check documentation. TESTE AUTO UPDATE"});
 });
 
 /**
