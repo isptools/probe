@@ -18,7 +18,7 @@ function pull(error, stdout, stderr) {
 
 	//out = out.replace(/(\r\n|\n|\r)/gm,"");
   //lout = trim(out).length;
-	sys.puts(stdout);
+	sys.puts(out);
   executa = true;
   out.forEach(function(line) {
         var linha = trim(line);
