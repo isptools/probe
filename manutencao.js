@@ -18,14 +18,13 @@ function pull(error, stdout, stderr) {
 
 	//out = out.replace(/(\r\n|\n|\r)/gm,"");
   //lout = trim(out).length;
-	sys.puts(out);
   executa = true;
   out.forEach(function(line) {
         var linha = trim(line);
         if(linha=="Already up-to-date.")
         executa = false;
     });
-
+  sys.puts(out,executa);
 	if (executa) {
     console.log('atualizar');
 		exec('pm2 reload all',puts);
