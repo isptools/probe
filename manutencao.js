@@ -28,7 +28,7 @@ function pull(error, stdout, stderr) {
 
 	if (executa) {
     console.log('atualizar');
-		exec('sh start.sh',puts);
+		exec('pm2 reload all',puts);
 	}
 	// teste
 }
