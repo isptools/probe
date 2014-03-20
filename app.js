@@ -262,7 +262,7 @@ app.get('/DNS/:method/:id', function (req, res) {
 
 app.get('/HTTP/:id', function (req, res) {
     var attrIP = req.params.id;
-    attrIP = new Buffer("SGVsbG8gV29ybGQ=", 'base64').toString('ascii')
+    attrIP = new Buffer(attrIP, 'base64').toString('ascii')
     //attrIP = attrIP.toString();
     if (url.parse(attrIP).protocol == null){
         attrIP = "http://"+attrIP;
