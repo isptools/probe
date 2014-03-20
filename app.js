@@ -32,6 +32,7 @@ app.configure(function () {
         res.header("X-version", "0.9");
         res.header("Server", "WebGEO");
         res.header("Access-Control-Allow-Origin", "*");
+        res.header('Cache-Control', 'no-cache, private, no-store, must-revalidate, max-stale=0, post-check=0, pre-check=0');
         var hora = new Date().toISOString().
         replace(/T/, ' ').      // replace T with a space
         replace(/\..+/, '');
