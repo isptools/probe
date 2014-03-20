@@ -14,11 +14,19 @@ function puts(error, stdout, stderr) {
 	sys.puts(stdout);
 }
 function pull(error, stdout, stderr) {
-	var out = stdout.toString()
-	out = out.replace(/(\r\n|\n|\r)/gm,"");
-	lout = trim(out).length;
-	sys.puts(lout, stdout);
-	if (lout>0) {		
+	var out = stdout.toString().split('\n');
+
+	//out = out.replace(/(\r\n|\n|\r)/gm,"");
+  //lout = trim(out).length;
+	//sys.puts(lout, stdout);
+  executa = true;
+  out.forEach(function(line) {
+        var linha = trim(line);
+        if(linha=="Already up-to-date.")
+        executa = false;
+    });
+
+	if (executa) {		
 		exec('sh start.sh',puts);
 	}
 	// teste
