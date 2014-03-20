@@ -5,7 +5,7 @@ module.exports = {
   atualizar: function () {
     
   	console.log(Date());
-  	exec("git fetch", pull);
+  	exec("git pull origin master", pull);
 
     return true;
   }
@@ -26,7 +26,8 @@ function pull(error, stdout, stderr) {
         executa = false;
     });
 
-	if (executa) {		
+	if (executa) {
+    console.log('atualizar');
 		exec('sh start.sh',puts);
 	}
 	// teste
