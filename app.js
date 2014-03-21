@@ -1,4 +1,3 @@
-exec('echo "Starting ISP Tools - www.isptools.com.br" | wall');
 console.log('');
 console.log('');
 console.log('');
@@ -12,7 +11,7 @@ console.log('');
 console.log('');
 
 var manut = require('./manutencao');
-setInterval(manut.atualizar, 5 * 1000);
+setInterval(manut.atualizar, 15 * 1000);
 manut.atualizar();
 
 var Step = require('step');
