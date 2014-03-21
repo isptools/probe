@@ -27,7 +27,7 @@ function pull(error, stdout, stderr) {
 	if (executa) {
     sys.puts(out,executa);
     console.log('atualizar');
-		exec('pm2 reload all',puts);
+		exec('pm2 -f reload all',puts);
 	}
 	// teste
 }
