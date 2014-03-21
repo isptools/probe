@@ -52,8 +52,8 @@ rm /etc/init.d/pm2-init.sh
 #pm2 dump
 #pm2 delete all
 pm2 kill
-pm2 start app.js -i 1 --name ISPTools
-pm2 web
+pm2 start app.js -x -f -i 1 --name ISPTools
+#pm2 web
 echo "OK"
 clear
 echo "-------------------------------------------------------------------------"
