@@ -1,3 +1,4 @@
+exec('echo "Starting ISP Tools - www.isptools.com.br" | wall');
 console.log('');
 console.log('');
 console.log('');

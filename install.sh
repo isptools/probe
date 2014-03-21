@@ -73,7 +73,6 @@ echo ""
 echo "Obrigado!"
 echo "Giovane Heleno"
 echo "-------------------------------------------------------------------------"
-reboot
 
 ## wget -qO- https://bitbucket.org/giovaneh/isptools/raw/master/install.sh | sh
 
