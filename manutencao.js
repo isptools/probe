@@ -24,8 +24,8 @@ function pull(error, stdout, stderr) {
         if(linha=="Already up-to-date.")
         executa = false;
     });
-  sys.puts(out,executa);
 	if (executa) {
+    sys.puts(out,executa);
     console.log('atualizar');
 		exec('pm2 reload all',puts);
 	}
