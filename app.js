@@ -59,7 +59,7 @@ app.configure(function () {
  */
 app.get('/', function (req, res) {
     //res.redirect('http://www.isptools.com.br');
-    res.json({"err":"invalid request. check documentation.","version":"1.0.0"});
+    res.json({"err":"invalid request. check documentation.","version":"1.0.1","query": req.query});
 });
 
 /**
@@ -78,7 +78,8 @@ app.get('/health', function(req, res){
   res.send({
     pid: process.pid,
     memory: process.memoryUsage(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    "query": req.query
   })
 })
 
@@ -100,6 +101,7 @@ app.get('/PING/:id/:ttl?', function (req, res) {
     attrTTL = (attrTTL==null)?128:parseInt(trim(attrTTL));
     var attrIP = req.params.id;
     var sessionID = req.query.sessionID;
+
     //console.log(sessionID);
     attrIP = attrIP.toString();
     attrIP = trim(attrIP);
@@ -115,7 +117,8 @@ app.get('/PING/:id/:ttl?', function (req, res) {
                         "datetime": Date(),
                         "target": attrIP,
                         "err": 'host not found',
-                        "sessionID": sessionID
+                        "sessionID": sessionID,
+                        "query": req.query
                         });
                 }
                 else
@@ -134,7 +137,8 @@ app.get('/PING/:id/:ttl?', function (req, res) {
                     "ttl": attrTTL,
                     "err": err,
                     "sessionID": sessionID,
-                    "sID": sID
+                    "sID": sID,
+                    "query": req.query
                 });
             });
         }
@@ -231,7 +235,8 @@ app.get('/DNS/:method/:id', function (req, res) {
             "method": method,
             "host": attrIP,
             "err": {code:'BADFAMILY'} ,
-            "ipv": (net.isIP(attrIP)?(net.isIPv6(attrIP)?6:4):0)
+            "ipv": (net.isIP(attrIP)?(net.isIPv6(attrIP)?6:4):0),
+            "query": req.query
         });
     } else
     dns.resolve(attrIP, method, function (err, domains) {
@@ -241,7 +246,8 @@ app.get('/DNS/:method/:id', function (req, res) {
             "host": attrIP,
             "result": domains,
             "err": err,
-            "ipv": (net.isIP(attrIP)?(net.isIPv6(attrIP)?6:4):0)
+            "ipv": (net.isIP(attrIP)?(net.isIPv6(attrIP)?6:4):0),
+            "query": req.query
         });
     });
 });
@@ -276,14 +282,16 @@ app.get('/HTTP/:id', function (req, res) {
                 "url": url.parse(attrIP),
                 "status": e.statusCode,
                 "response": e.headers,
-                "err": null
+                "err": null,
+                "query": req.query
             });
         })
             .on('error', function (e) {
                 res.json({
                     "datetime": Date(),
                     "url": attrIP,
-                    "err": e.message
+                    "err": e.message,
+                    "query": req.query
                 });
             });
     }
@@ -296,14 +304,16 @@ app.get('/HTTP/:id', function (req, res) {
                 "url": url.parse(attrIP),
                 "status": e.statusCode,
                 "response": e.headers,
-                "err": null
+                "err": null,
+                "query": req.query
             });
         })
             .on('error', function (e) {
                 res.json({
                     "datetime": Date(),
                     "url": attrIP,
-                    "err": e.message
+                    "err": e.message,
+                    "query": req.query
                 });
             });
     }
@@ -312,7 +322,8 @@ app.get('/HTTP/:id', function (req, res) {
         res.json({
             "datetime": Date(),
             "url": attrIP,
-            "err": "invalid URL - need URL encoded - HTTP/HTTPS only"
+            "err": "invalid URL - need URL encoded - HTTP/HTTPS only",
+            "query": req.query
         });
     
 });
