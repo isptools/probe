@@ -59,7 +59,7 @@ app.configure(function () {
  */
 app.get('/', function (req, res) {
     //res.redirect('http://www.isptools.com.br');
-    res.json({"err":"invalid request. check documentation.","version":"1.0.1","query": req.query});
+    res.json({"err":"invalid request. check documentation.","version":"1.0.2","query": req.query});
 });
 
 /**
@@ -125,7 +125,7 @@ app.get('/PING/:id/:ttl?', function (req, res) {
                 xattrIP = domains[Math.floor(Math.random()*domains.length)];
             }
             //console.log(sID);
-            var session = ping.createSession({"ttl":attrTTL, 'sessionId': sID });
+            var session = ping.createSession({"ttl":attrTTL, 'sessionId': sID, retries: 2, timeout: 2000 });
             session.pingHost(xattrIP, function (err, target, sent, rcvd) {
                 var ms = rcvd - sent;
                 session.close();
