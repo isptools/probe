@@ -5,7 +5,7 @@ module.exports = {
   atualizar: function () {
     
   	console.log(Date());
-  	exec("git pull origin master", pull);
+  	exec("sudo git pull origin master", pull);
 
     return true;
   }
@@ -27,8 +27,8 @@ function pull(error, stdout, stderr) {
 	if (executa) {
     sys.puts(out,executa);
     console.log('atualizar');
-    exec('/usr/sbin/atd -b 15 -l 1',puts);
-    exec('at -f start.sh -v now + 1 minutes',puts);
+    exec('sudo /usr/sbin/atd -b 15 -l 1',puts);
+    exec('sudo at -f start.sh -v now + 1 minutes',puts);
 
 		//exec('pm2 -f reload all',puts);
 	}
