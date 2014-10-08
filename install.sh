@@ -1,74 +1,77 @@
 #!/bin/bash
 clear
 echo "-------------------------------------------------------------------------"
-echo "Instalando SUDO"
-apt-get update
-apt-get install sudo
+echo "Instalando SUDO, GIT e AT"
+
+        apt-get update
+        hash sudo 2>/dev/null || { apt-get install sudo; }
+        hash at 2>/dev/null || { apt-get install at; }
+        hash git 2>/dev/null || { apt-get install git; }
+
 echo "OK"
-clear
 echo "-------------------------------------------------------------------------"
 echo "Atualizando Data/Hora"
-date
-echo "America/Sao_Paulo" | sudo tee /etc/timezone
-sudo dpkg-reconfigure --frontend noninteractive tzdata
-ntpdate pool.ntp.br
-date
+
+        date
+        echo "America/Sao_Paulo" | sudo tee /etc/timezone
+        sudo dpkg-reconfigure --frontend noninteractive tzdata
+        hash ntpdate 2>/dev/null || { apt-get install ntpdate; }
+        ntpdate pool.ntp.br
+        date
+
 echo "OK"
-clear
 echo "-------------------------------------------------------------------------"
 echo "Preparando diretório"
-rm -r /opt/tklweb-cp
-mkdir /opt/tklweb-cp
-cd /opt/tklweb-cp
+
+        rm -r /var/www/isptools
+        mkdir /var/www/isptools
+        cd /var/www/isptools
+
 echo "OK"
-clear
 echo "-------------------------------------------------------------------------"
-echo "Atualizando Node.js"
+echo "Instalando Node.js"
 echo "-------------------------------------------------------------------------"
-npm install -g n
+
+
+        if hash npm 2>/dev/null; then
+                npm cache clean
+                npm install -g n
+                n stable        
+        else
+                sudo apt-get install python-software-properties
+                sudo add-apt-repository ppa:chris-lea/node.js
+                sudo apt-get update
+                sudo apt-get install nodejs
+        fi
+
+
 echo "OK"
-n stable
-echo "OK"
-clear
 echo "-------------------------------------------------------------------------"
 echo "Baixando ISPTools"
 echo "-------------------------------------------------------------------------"
-git init
-git remote add origin https://giovaneh@bitbucket.org/giovaneh/isptools.git
-git pull origin master
+
+        git init
+        #git remote add origin https://giovaneh@bitbucket.org/giovaneh/isptools.git
+        git remote add origin https://github.com/giovaneh/isptools.git
+        git pull origin master
+        npm install --unsafe-perm
+
 echo "OK"
-clear
 echo "-------------------------------------------------------------------------"
-echo "Interrompendo instâncias Node.js fantasmas"
+echo "Iniciando ISP Tools"
 echo "-------------------------------------------------------------------------"
-killall node
+
+        pm2 start app.js -x -f -i max --name ISPTools
+        pm2 -f startup ubuntu
+
 echo "OK"
-clear
-echo "-------------------------------------------------------------------------"
-echo "Instalando PM2"
-echo "-------------------------------------------------------------------------"
-npm install pm2 -g
-echo "OK"
-clear
-echo "-------------------------------------------------------------------------"
-echo "Startando PM2"
-echo "-------------------------------------------------------------------------"
-rm /etc/init.d/pm2-init.sh
-pm2 kill
-pm2 start app.js -x -f -i 1 --name ISPTools
-echo "OK"
-clear
-echo "-------------------------------------------------------------------------"
-echo "Daemon PM2"
-echo "-------------------------------------------------------------------------"
-pm2 -f startup ubuntu
-echo "OK"
-clear
+
 echo "-------------------------------------------------------------------------"
 echo "FIM - www.isptools.com.br"
 echo "-------------------------------------------------------------------------"
-echo "Agora nos envie um email para que possamos adicionar ao site."
-echo "contato@isptools.com.br"
+echo "Acesse o endereço abaixo para concluir o processo:"
+echo ""
+echo "http://www.isptools.com.br/cadastro"
 echo ""
 echo "Obrigado!"
 echo "Giovane Heleno"

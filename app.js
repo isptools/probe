@@ -1,17 +1,10 @@
-console.log('');
-console.log('');
-console.log('');
-console.log('------------------------------------------------------');
-console.log('- ISP Tools - www.isptools.com.br                    -');
-console.log('- Giovane Heleno (www.giovane.pro.br)                -');
-console.log('------------------------------------------------------');
-console.log('Service started... litening port 8000.');
-console.log('');
-console.log('');
-console.log('');
+global.version = "1.1.0";
+global.updated = true;
+global.timeout = 5000;
+version = global.version;
 
 var manut = require('./manutencao');
-setInterval(manut.atualizar, 15 * 1000);
+setInterval(manut.atualizar, 60 * 60 * 1000);
 manut.atualizar();
 
 var Step = require('step');
@@ -24,25 +17,41 @@ var https = require('https');
 var express = require('express');
 var app = express();
 var sID = new Date().getTime();
+var login = false;
 sID=0;
 
-app.configure(function () {
     app.use(function (req, res, next) {
         res.header("X-powered-by", "Giovane Heleno - www.giovane.pro.br");
-        res.header("X-version", "0.9");
-        res.header("Server", "WebGEO");
+        res.header("X-version", version);
+        res.header("Server", "Giovane");
         res.header("Access-Control-Allow-Origin", "*");
         res.header('Cache-Control', 'no-cache, private, no-store, must-revalidate, max-stale=0, post-check=0, pre-check=0');
+
         var hora = new Date().toISOString().
         replace(/T/, ' ').      // replace T with a space
         replace(/\..+/, '');
         sID++;
         sID=(sID>=65535)?0:sID;
+        //console.log(req.headers);
         //console.log(sID);
-        //console.log((hora+" - "+res.connection.remoteAddress+' - '+req.url.toUpperCase()));
+        console.log((hora+" - "+res.connection.remoteAddress+' - '+req.url));
+        //
+        /*
+        http.get('http://www.isptools.com.br/ok/session/?sessionID='+req.query.id+'&nocache='+hora, function (e) {                    
+            e.on('data', function (nSession) {
+                if(nSession.toString('utf8')=='true'){
+                    login = true;
+                    next();
+                } else {
+                    login = false;
+                    res.json({"version":version, "updated": global.updated, "query": req.query, "auth": login});
+                }
+            });
+        });
+        */
         next();
+        //
     });
-});
 
 
 /**
@@ -58,30 +67,17 @@ app.configure(function () {
  *    @return {[type]}
  */
 app.get('/', function (req, res) {
-    //res.redirect('http://www.isptools.com.br');
-    res.json({"err":"invalid request. check documentation.","version":"1.0.2","query": req.query});
+    res.json({
+            "version":version,
+            "updated": global.updated,
+            "query": req.query,
+            "auth": login,
+            pid: process.pid,
+            memory: process.memoryUsage(),
+            uptime: process.uptime()
+    });
 });
 
-/**
- *    HEALT
- *
- *    @date   2014-03-18
- *
- *    @author Giovane Heleno - www.giovane.pro.br
- *
- *    @param  {[type]}   req
- *    @param  {[type]}   res
- *
- *    @return {[type]}
- */
-app.get('/health', function(req, res){
-  res.send({
-    pid: process.pid,
-    memory: process.memoryUsage(),
-    uptime: process.uptime(),
-    "query": req.query
-  })
-})
 
 /**
  *    PING
@@ -101,10 +97,10 @@ app.get('/PING/:id/:ttl?', function (req, res) {
     attrTTL = (attrTTL==null)?128:parseInt(trim(attrTTL));
     var attrIP = req.params.id;
     var sessionID = req.query.sessionID;
+    var notfound=0;
 
     //console.log(sessionID);
-    attrIP = attrIP.toString();
-    attrIP = trim(attrIP);
+    attrIP = attrIP.toString();    
     Step(
         function resolveIP() {
                 dns.resolve(attrIP, this);
@@ -120,15 +116,22 @@ app.get('/PING/:id/:ttl?', function (req, res) {
                         "sessionID": sessionID,
                         "query": req.query
                         });
+                    notfound=1;
                 }
                 else
                 xattrIP = domains[Math.floor(Math.random()*domains.length)];
             }
             //console.log(sID);
-            var session = ping.createSession({"ttl":attrTTL, 'sessionId': sID, retries: 2, timeout: 2000 });
+            var session = ping.createSession({
+                    "ttl":attrTTL,
+                    'sessionId': sID,
+                    'retries': 2,
+                    'timeout': (global.timeout/3),
+                    'networkProtocol': ping.NetworkProtocol.IPv4
+                     });
             session.pingHost(xattrIP, function (err, target, sent, rcvd) {
                 var ms = rcvd - sent;
-                session.close();
+                if(!notfound)
                 res.json({
                     "datetime": Date(),
                     "ip": domains,
@@ -140,76 +143,12 @@ app.get('/PING/:id/:ttl?', function (req, res) {
                     "sID": sID,
                     "query": req.query
                 });
+                session.close();
             });
         }
     );
 });
 
-
-/**
- *    TRACEROUTE
- *
- *    @date   2014-03-10
- *
- *    @author Giovane Heleno - www.giovane.pro.br
- *
- *    @param  {[type]}   req [description]
- *    @param  {[type]}   res [description]
- *
- *    @return {[type]}       [description]
- */
-app.get('/TRACEROUTE/:id', function (req, res) {
-    var attrIP = req.params.id;
-        attrIP = attrIP.toString();
-        attrIP = trim(attrIP);
-        Step(
-            function resolveIP() {
-                    dns.resolve(attrIP, this);
-            },
-            function passo1(err, domains){
-                            xattrIP = attrIP;
-            if (!net.isIP(attrIP)) {
-                xattrIP = domains[Math.floor(Math.random()*domains.length)];
-            }
-
-                tracert(xattrIP, this);
-            },
-            function passo2(xyz){
-                res.json(xyz);
-            }
-        );
-});
-
-function tracert(ip, callback, attrTTL, errTTL, json) {
-    attrTTL = attrTTL || 1;
-    errTTL = errTTL || 0;
-    json = json || new Array();
-    var session = ping.createSession({"ttl":attrTTL, "timeout": 2000});
-    session.pingHost(ip, function (err, target, sent, rcvd) {
-                var ms = rcvd - sent;
-                if(err==null) {
-                    json.push({"ttl":attrTTL,"ip":ip,"ms":ms});
-                    //console.log(json);
-                    callback(json);
-                } else if(err.name=="TimeExceededError"){
-                    errTTL = 0;
-                    json.push({"ttl":attrTTL,"ip":err.source,"ms":ms});
-                    tracert(ip, callback, (attrTTL+1), (errTTL+1), json);
-                } else {
-                    if(errTTL==3){
-                        json.push({"ttl":attrTTL,"err":"unreachable"});
-                        callback(json);
-                    }
-                    else if(attrTTL<2) {
-                        tracert(ip, callback, (attrTTL+1), (errTTL+1), json);
-                    }
-                    else {
-                        json.push({"ttl":attrTTL,"err":"unreachable", "errttl": errTTL});
-                        tracert(ip, callback, attrTTL, (errTTL+1), json);
-                    }
-                }
-            });
-}
 
 
 /**
@@ -268,37 +207,42 @@ app.get('/DNS/:method/:id', function (req, res) {
 
 app.get('/HTTP/:id', function (req, res) {
     var attrIP = req.params.id;
-    attrIP = new Buffer(attrIP, 'base64').toString('ascii')
+    attrIP = new Buffer(attrIP, 'base64').toString('ascii');
     //attrIP = attrIP.toString();
     if (url.parse(attrIP).protocol == null){
         attrIP = "http://"+attrIP;
     }
-    //attrIP = unescape(attrIP);
 
+    attrIPoriginal = attrIP;
+    attrIP = injection(attrIP);
+    //sec_url = url.parse(attrIP);
+    //attrIP = sec_url.protocol + '//'+
+    //console.log(req.headers);
     if (url.parse(attrIP).protocol == 'http:') {
-        http.get(attrIP, function (e) {
+        var httpreq = http.get(attrIP, function (e) {
             res.json({
                 "datetime": Date(),
-                "url": url.parse(attrIP),
+                "url": url.parse(attrIPoriginal),
                 "status": e.statusCode,
                 "response": e.headers,
                 "err": null,
                 "query": req.query
             });
         })
-            .on('error', function (e) {
-                res.json({
-                    "datetime": Date(),
-                    "url": attrIP,
-                    "err": e.message,
-                    "query": req.query
-                });
+        .on('error', function (e) {
+            res.json({
+                "datetime": Date(),
+                "url": attrIP,
+                "err": (e.message=='socket hang up')?'TIMEOUT':e.message,
+                "query": req.query
             });
+        });
+        httpreq.setTimeout(global.timeout, function(){ httpreq.abort(); });
     }
 
 
     else if (url.parse(attrIP).protocol == 'https:') {
-        https.get(attrIP, function (e) {
+        var httpsreq = https.get(attrIP, function (e) {
             res.json({
                 "datetime": Date(),
                 "url": url.parse(attrIP),
@@ -308,14 +252,15 @@ app.get('/HTTP/:id', function (req, res) {
                 "query": req.query
             });
         })
-            .on('error', function (e) {
-                res.json({
-                    "datetime": Date(),
-                    "url": attrIP,
-                    "err": e.message,
-                    "query": req.query
-                });
+        .on('error', function (e) {
+            res.json({
+                "datetime": Date(),
+                "url": attrIP,
+                "err": (e.message=='socket hang up')?'TIMEOUT':e.message,
+                "query": req.query
             });
+        });
+        httpsreq.setTimeout(global.timeout, function(){ httpsreq.abort(); });
     }
 
     else
@@ -329,10 +274,28 @@ app.get('/HTTP/:id', function (req, res) {
 });
 
 
+
+
+
 /**
  *    Habilita servidor porta 8000
  */
-app.listen(8000);
+var server = app.listen(8000, function(){
+
+        console.log('');
+        console.log('');
+        console.log('');
+        console.log('------------------------------------------------------');
+        console.log('- ISP Tools - www.isptools.com.br                    -');
+        console.log('- Giovane Heleno (www.giovane.pro.br)                -');
+        console.log('------------------------------------------------------');
+        console.log('Service started... litening port %d.', server.address().port);
+        console.log('');
+        console.log('');
+        console.log('');
+
+
+});
 
 
 
@@ -352,3 +315,10 @@ var trim = function (s) {
 
   return s.substring(i, j + 1);
 };
+
+function injection(x) {
+    var urlparse = url.parse(x);
+    delete urlparse["query"];
+    delete urlparse["search"];
+    return url.format(urlparse);
+}
