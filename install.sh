@@ -1,12 +1,14 @@
 #!/bin/bash
 clear
 echo "-------------------------------------------------------------------------"
-echo "Instalando SUDO, GIT e AT"
+echo "Instalando componentes necessários do Sistema Operacional"
 
         apt-get update
-        hash sudo 2>/dev/null || { apt-get install sudo; }
-        hash at 2>/dev/null || { apt-get install at; }
-        hash git 2>/dev/null || { apt-get install git; }
+        apt-get -y install build-essential
+        hash sudo 2>/dev/null || { apt-get -y install sudo; }
+        hash at 2>/dev/null || { apt-get -y install at; }
+        hash git 2>/dev/null || { apt-get -y install git; }
+        hash make 2>/dev/null || { apt-get -y install make; }
 
 echo "OK"
 echo "-------------------------------------------------------------------------"
@@ -15,7 +17,7 @@ echo "Atualizando Data/Hora"
         date
         echo "America/Sao_Paulo" | sudo tee /etc/timezone
         sudo dpkg-reconfigure --frontend noninteractive tzdata
-        hash ntpdate 2>/dev/null || { apt-get install ntpdate; }
+        hash ntpdate 2>/dev/null || { apt-get -y install ntpdate; }
         ntpdate pool.ntp.br
         date
 
@@ -39,10 +41,10 @@ echo "-------------------------------------------------------------------------"
                 npm install -g n
                 n stable        
         else
-                sudo apt-get install python-software-properties
+                sudo apt-get -y install python-software-properties
                 sudo add-apt-repository ppa:chris-lea/node.js
                 sudo apt-get update
-                sudo apt-get install nodejs
+                sudo apt-get -y install nodejs
         fi
 
 
