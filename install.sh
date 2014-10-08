@@ -55,6 +55,7 @@ echo "-------------------------------------------------------------------------"
         git remote add origin https://github.com/giovaneh/isptools.git
         git pull origin master
         npm install --unsafe-perm
+        npm i -g pm2 --unsafe-perm
 
 echo "OK"
 echo "-------------------------------------------------------------------------"
