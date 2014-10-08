@@ -64,6 +64,7 @@ echo "-------------------------------------------------------------------------"
 echo "Iniciando ISP Tools"
 echo "-------------------------------------------------------------------------"
 
+        pm2 kill
         pm2 start app.js -x -f -i max --name ISPTools
         pm2 -f startup ubuntu
 
