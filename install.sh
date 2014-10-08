@@ -24,7 +24,8 @@ echo "-------------------------------------------------------------------------"
 echo "Preparando diretório"
 
         rm -r /var/www/isptools
-        mkdir /var/www/isptools
+        rm -r /opt/tklweb-cp
+        mkdir -p /var/www/isptools
         cd /var/www/isptools
 
 echo "OK"
@@ -54,8 +55,9 @@ echo "-------------------------------------------------------------------------"
         #git remote add origin https://giovaneh@bitbucket.org/giovaneh/isptools.git
         git remote add origin https://github.com/giovaneh/isptools.git
         git pull origin master
+
+        hash git 2>/dev/null || { npm i -g pm2 --unsafe-perm; }
         npm install --unsafe-perm
-        npm i -g pm2 --unsafe-perm
 
 echo "OK"
 echo "-------------------------------------------------------------------------"
