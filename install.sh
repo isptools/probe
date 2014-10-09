@@ -2,6 +2,7 @@
 clear
 echo "-------------------------------------------------------------------------"
 echo "Instalando componentes necessários do Sistema Operacional"
+echo "-------------------------------------------------------------------------"
 
         apt-get update
         apt-get -y install build-essential
@@ -13,6 +14,7 @@ echo "Instalando componentes necessários do Sistema Operacional"
 echo "OK"
 echo "-------------------------------------------------------------------------"
 echo "Atualizando Data/Hora"
+echo "-------------------------------------------------------------------------"
 
         date
         echo "America/Sao_Paulo" | sudo tee /etc/timezone
@@ -24,6 +26,7 @@ echo "Atualizando Data/Hora"
 echo "OK"
 echo "-------------------------------------------------------------------------"
 echo "Preparando diretório"
+echo "-------------------------------------------------------------------------"
 
         rm -r /var/www/isptools
         rm -r /opt/tklweb-cp
@@ -54,6 +57,7 @@ echo "Baixando ISPTools"
 echo "-------------------------------------------------------------------------"
 
         git init
+        git remote rm origin
         #git remote add origin https://giovaneh@bitbucket.org/giovaneh/isptools.git
         git remote add origin https://github.com/giovaneh/isptools.git
         git pull origin master

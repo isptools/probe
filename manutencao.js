@@ -21,7 +21,7 @@ module.exports = {
               console.log('http://www.isptools.com.br/atualizar'.cyan);
               console.log('------------------------------------------------------------------'.yellow);
                             
-              executa('sudo at -f start.sh -v now + 1 minutes');
+              executa('sudo at -f upgrade.sh -v now + 1 minutes');
 
               exec('echo "\n\n+-----------------------------------------+\n| ISP Tools DESATUALIZADO.                |\n|                                         |\n| Acesse:                                 |\n| http://www.isptools.com.br/atualizar    |\n+-----------------------------------------+\n\n " | wall');
 

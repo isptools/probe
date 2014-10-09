@@ -16,6 +16,9 @@ else
         npm i -g pm2 --unsafe-perm
 fi
 
+rm node_modules/ -R
+git remote rm origin
+git remote add origin https://github.com/giovaneh/isptools.git
 git fetch --all
 git reset --hard origin/master
 
