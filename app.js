@@ -31,7 +31,7 @@ app.use(function (req, res, next) {
 	replace(/\..+/, '');
 	sID++;
 	sID = (sID >= 65535) ? 0 : sID;
-	//console.log((hora + " - " + res.connection.remoteAddress + ' - ' + req.url));
+	console.log((hora + " - " + res.connection.remoteAddress + ' - ' + req.url));
 	next();
 });
 
@@ -263,6 +263,8 @@ var server = app.listen(8000, function () {
 	console.log('');
 
 });
+
+
 
 /**
  *    Functions

@@ -29,7 +29,7 @@ n stable
 
 npm install --unsafe-perm
 
-pm2 start app.js -x -f -i max --name ISPTools
+pm2 start app.js -x -f -i 1 --name ISPTools
 pm2 -f startup ubuntu
 
 echo "Update completed! - www.isptools.com.br" | wall
