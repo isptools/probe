@@ -42,12 +42,12 @@ echo "-------------------------------------------------------------------------"
         if hash npm 2>/dev/null; then
                 npm cache clean
                 npm install -g n
-                n stable        
+                n v0.10.33
         else
                 sudo apt-get -y install python-software-properties
                 sudo add-apt-repository ppa:chris-lea/node.js
                 sudo apt-get update
-                sudo apt-get -y install nodejs
+                sudo apt-get -y install node
         fi
 
 

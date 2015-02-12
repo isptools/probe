@@ -25,7 +25,7 @@ git reset --hard origin/master
 
 npm cache clean
 npm install -g n
-n stable
+n v0.10.33
 
 npm install --unsafe-perm
 
