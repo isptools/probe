@@ -5,11 +5,10 @@ echo "Instalando componentes necessários do Sistema Operacional"
 echo "-------------------------------------------------------------------------"
 
         apt-get update
-        apt-get -y install build-essential
         hash sudo 2>/dev/null || { apt-get -y install sudo; }
         hash at 2>/dev/null || { apt-get -y install at; }
-        hash git 2>/dev/null || { apt-get -y install git; }
         hash make 2>/dev/null || { apt-get -y install make; }
+        sudo apt-get install git-core build-essential openssl libssl-dev pkg-config
 
 echo "OK"
 echo "-------------------------------------------------------------------------"
@@ -25,6 +24,16 @@ echo "-------------------------------------------------------------------------"
 
 echo "OK"
 echo "-------------------------------------------------------------------------"
+echo "Instalando Node.js"
+echo "-------------------------------------------------------------------------"
+
+        cd /usr/local/src
+        sudo git clone git://github.com/joyent/node.git
+        cd node
+        sudo git checkout v0.10.33
+
+echo "OK"
+echo "-------------------------------------------------------------------------"
 echo "Preparando diretório"
 echo "-------------------------------------------------------------------------"
 
@@ -32,24 +41,6 @@ echo "-------------------------------------------------------------------------"
         rm -r /opt/tklweb-cp
         mkdir -p /var/www/isptools
         cd /var/www/isptools
-
-echo "OK"
-echo "-------------------------------------------------------------------------"
-echo "Instalando Node.js"
-echo "-------------------------------------------------------------------------"
-
-
-        if hash npm 2>/dev/null; then
-                npm cache clean
-                npm install -g n
-                n v0.10.33
-        else
-                sudo apt-get -y install python-software-properties
-                sudo add-apt-repository ppa:chris-lea/node.js
-                sudo apt-get update
-                sudo apt-get -y install node
-        fi
-
 
 echo "OK"
 echo "-------------------------------------------------------------------------"

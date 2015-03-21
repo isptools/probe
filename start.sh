@@ -22,11 +22,12 @@ git remote add origin https://github.com/giovaneh/isptools.git
 git fetch --all
 git reset --hard origin/master
 
+cd /usr/local/src
+sudo git clone git://github.com/joyent/node.git
+cd node
+sudo git checkout v0.10.33
 
-npm cache clean
-npm install -g n
-n v0.10.33
-
+cd /var/www/isptools
 npm install --unsafe-perm
 
 pm2 start app.js -x -f -i 1 --name ISPTools
