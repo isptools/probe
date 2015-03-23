@@ -27,11 +27,8 @@ echo "-------------------------------------------------------------------------"
 echo "Instalando Node.js"
 echo "-------------------------------------------------------------------------"
 
-        cd /usr/local/src
-        rm -R ./node
-        sudo git clone git://github.com/joyent/node.git
-        cd node
-        sudo git checkout v0.10.33
+        wget -qO- https://raw.githubusercontent.com/creationix/nvm/v0.24.0/install.sh | bash
+        nvm install 0.10
 
 echo "OK"
 echo "-------------------------------------------------------------------------"
