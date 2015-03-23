@@ -8,7 +8,7 @@ echo "-------------------------------------------------------------------------"
         hash sudo 2>/dev/null || { apt-get -y install sudo; }
         hash at 2>/dev/null || { apt-get -y install at; }
         hash make 2>/dev/null || { apt-get -y install make; }
-        sudo apt-get install git-core build-essential openssl libssl-dev pkg-config
+        sudo apt-get -y install git-core build-essential openssl libssl-dev pkg-config
 
 echo "OK"
 echo "-------------------------------------------------------------------------"

@@ -3,9 +3,9 @@ clear
 echo "Updating ISP Tools - www.isptools.com.br" | wall
 
 
-hash sudo 2>/dev/null || { apt-get install sudo; }
-hash at 2>/dev/null || { apt-get install at; }
-hash git 2>/dev/null || { apt-get install git; }
+hash sudo 2>/dev/null || { apt-get -y install sudo; }
+hash at 2>/dev/null || { apt-get -y install at; }
+hash git 2>/dev/null || { apt-get -y install git; }
 
 rm -f /etc/init.d/pm2-init.sh
 killall node
