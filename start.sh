@@ -22,9 +22,7 @@ git remote add origin https://github.com/giovaneh/isptools.git
 git fetch --all
 git reset --hard origin/master
 
-cd /usr/local/src
-sudo git clone git://github.com/joyent/node.git
-cd node
+cd /usr/local/src/node
 sudo git checkout v0.10.33
 
 cd /var/www/isptools

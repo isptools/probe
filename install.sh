@@ -28,6 +28,7 @@ echo "Instalando Node.js"
 echo "-------------------------------------------------------------------------"
 
         cd /usr/local/src
+        rm -R ./node
         sudo git clone git://github.com/joyent/node.git
         cd node
         sudo git checkout v0.10.33
