@@ -28,6 +28,7 @@ echo "Instalando Node.js"
 echo "-------------------------------------------------------------------------"
 
         wget -qO- https://raw.githubusercontent.com/creationix/nvm/v0.24.0/install.sh | bash
+        [[ -s $HOME/.nvm/nvm.sh ]] && . $HOME/.nvm/nvm.sh  # This loads NVM
         nvm install 0.10
 
 echo "OK"
