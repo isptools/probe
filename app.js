@@ -248,7 +248,8 @@ app.get('/HTTP/:id', function (req, res) {
 /**
  *    Habilita servidor porta 8000
  */
-var server = app.listen(8000, function () {
+var serverPort = process.env.OPENSHIFT_NODEJS_PORT  || 8000;
+var server = app.listen(serverPort, function () {
 
 	console.log('');
 	console.log('');
