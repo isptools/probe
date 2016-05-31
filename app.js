@@ -31,7 +31,8 @@ app.use(function (req, res, next) {
 	replace(/\..+/, '');
 	sID++;
 	sID = (sID >= 65535) ? 0 : sID;
-	console.log((hora + " - " + res.connection.remoteAddress + ' - ' + req.url));
+	var ipremoto = req.header('x-forwarded-for') || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress; // Get the requestor's IP
+        console.log((hora + " - " + ipremoto + ' - ' + req.url)); // Print LOG
 	next();
 });
 
