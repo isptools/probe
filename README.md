@@ -17,13 +17,18 @@ Instruções de instalação em https://www.docker.com/get-docker
 
 Em distros mais atuais, pode tentar o instalador automático do docker, executando:
 
-* curl -fsSL https://get.docker.com/ | sh
+```sh
+$ curl -fsSL https://get.docker.com/ | sh
+```
+
 
 ## Faça o pull do ISPTools
 
 Execute:
 
-* docker pull isptools/isptools
+```sh
+$ docker pull isptools/probe
+```
 
 Este comando fará o download do ISPTools para sua máquina, já totalmente configurado.
 
@@ -31,7 +36,9 @@ Este comando fará o download do ISPTools para sua máquina, já totalmente conf
 
 Execute:
 
-* docker run --restart=always -p 8000:8000 -d isptools/isptools
+```sh
+$ docker run --restart=always -p 8000:8000 -d isptools/probe
+```
 
 Este comando, executará o ISPTools em sua máquina, mapeando a porta 8000 (TCP) e configurando para inicializar na inicialização da máquina.
 
@@ -39,6 +46,15 @@ Este comando, executará o ISPTools em sua máquina, mapeando a porta 8000 (TCP)
 ## Pronto!
 
 Agora vá em http://www.isptools.com.br/painel e ative seu servidor.
+
+
+
+## Contribua com o código!
+
+O código do probe é aberto, contribua:
+
+https://github.com/isptools/isptools
+
 
 ## Dúvidas?
 
