@@ -1,0 +1,22 @@
+{
+  "name": "ISPTools",
+  "version": "1.1.2",
+  "private": true,
+  "description": "Ferramentas para ISP",
+  "main": "app.js",
+  "dependencies": {
+    "colors": "0.6.x",
+    "express": "3.4.x",
+    "net-ping": "1.1.x",
+    "step": "0.0.x"
+  },
+  "scripts": {
+        "start": "node app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giovaneh/isptools.git"
+  },
+  "author": "Giovane Heleno",
+  "license": "MIT"
+}
