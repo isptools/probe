@@ -1,0 +1,7 @@
+# .gitignore
+.env.dev
+old/
+logs/
+node_modules/
+package-lock.json
+isptools.code-workspace
