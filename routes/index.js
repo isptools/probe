@@ -1,57 +1,64 @@
 const express = require('express');
 const router = express.Router();
+const requestIp = require('request-ip');
+const cors = require('cors');
+const corsConfig = require('./corsConfig');
+const rateLimit = require('./rateLimitConfig');
 
-// ---------------------------------------------------------------------------------------------
-// Rate limit para evitar abuso de recursos
-// ---------------------------------------------------------------------------------------------
-const rateLimit = require('express-rate-limit');
-const domainLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minuto
-    max: 30, // limite de 1 requisição
-    keyGenerator: function(req) {
-        const decodedID = Buffer.from(req.params.id, 'base64').toString('ascii');
-        try {
-            // Tenta extrair o hostname se for uma URL
-            const hostname = new URL(decodedID).hostname;
-            return hostname || decodedID;
-        } catch (error) {
-            // Se não for uma URL válida, retorna o ID decodificado (pode ser hostname ou IP)
-            return decodedID;
-        }
-    },
-    handler: function(req, res) {
-        res.status(429).json({ message: 'Muitas solicitações - tente novamente mais tarde.' });
-    }
-});
+// Middleware para adicionar IP de origem ao console-stamp
+const addIPToConsoleStamp = (req, res, next) => {
+    const ip = requestIp.getClientIp(req);
 
-// ---------------------------------------------------------------------------------------------
+    // Configura o console-stamp com o IP de origem
+    require('console-stamp')(console, {
+        format: `:date(yyyy-mm-dd HH:MM:ss.l) [${ip}]`
+    });
+
+    next();
+};
+ 
 // Rotas
-// ---------------------------------------------------------------------------------------------
+router.use(addIPToConsoleStamp); // Middleware para adicionar IP de origem ao console-stamp
+router.use(cors(corsConfig)); // CORS com múltiplas origens
 
 const pingController = require('../controllers/ping');
 router.get('/ping/:id/:ttl?/:tipo?', pingController.ping);
 
 const dnsController = require('../controllers/dns');
-router.get('/dns/:method/:id', domainLimiter, dnsController.resolveDNS);
+router.get('/dns/:method/:id', rateLimit.domainLimiter, dnsController.resolveDNS);
 
 const httpController = require('../controllers/http');
-router.get('/http/:id', domainLimiter, httpController.fetchHTTP);
+router.get('/http/:id', rateLimit.domainLimiter, httpController.fetchHTTP);
 
 const tracerouteController = require('../controllers/traceroute');
-router.get('/traceroute/:id',domainLimiter, tracerouteController.traceroute);
+router.get('/traceroute/:id', rateLimit.domainLimiter, tracerouteController.traceroute);
 
-// ---------------------------------------------------------------------------------------------
-
-
+// Rota raiz
 router.get('/', (req, res) => {
+    console.log('/about');
     res.json({
+        "about": {
+            "product": "ISP.Tools",
+            "description": "Diagnostic tools for Internet Service Providers",
+            "author": "Giovane Heleno (www.giovane.pro.br)",
+            "website": "www.isp.tools"
+        },
         "version": global.version,
         "updated": global.updated,
         "query": req.query,
-        "auth": login,
         pid: process.pid,
         memory: process.memoryUsage(),
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV,
+        port: process.env.PORT,
+        hostname: process.env.HOSTNAME,
+        headers: req.headers,
+        url: req.url,
+        originalUrl: req.originalUrl,
+        baseUrl: req.baseUrl,
+        path: req.path,
+        query: req.query,
+        params: req.params,
     });
 });
 

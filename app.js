@@ -1,32 +1,41 @@
+require('dotenv').config();
 const cluster = require('cluster');
 const os = require('os');
+const funcoes = require('./funcoes');
+funcoes.customizeConsole();
 
-require('console-stamp')(console,  { 
-    format: ':date(yyyy-mm-dd HH:MM:ss.l)' 
-});
+const ligarcluster = !!JSON.parse(String(process.env.LIGAR_CLUSTER).toLowerCase());
 
 if (cluster.isMaster) {
-    console.clear();
-    console.log('------------------------------------------------------');
-    console.log('- ISP.Tools - www.isptools.com.br                    -');
-    console.log('- Giovane Heleno (www.giovane.pro.br)                -');
-    console.log('------------------------------------------------------');
 
+    // pinga o isp.tools a cada 5 minutos
+    funcoes.registro();
+    setInterval(funcoes.registro, 300000);
+
+    console.clear();
+    console.warn('------------------------------------------------------');
+    console.warn('- ISP.Tools - www.isptools.com.br                    -');
+    console.warn('- Giovane Heleno (www.giovane.pro.br)                -');
+    console.warn('------------------------------------------------------');
+    console.info(`Starting cluster mode: ${ligarcluster}`);
+}
+
+if (ligarcluster && cluster.isMaster) {
     const numCPUs = os.cpus().length;
-    console.log(`Master ${process.pid} is running`);
-    console.log(`Forking for ${numCPUs} CPUs`);
+    console.info(`- Master ${process.pid} is running`);
+    console.info(`- Forking for ${numCPUs} CPUs`);
 
     for (let i = 0; i < numCPUs; i++) {
-        cluster.fork().on('online', function() {
-            //console.log(`Worker ${this.process.pid} started`);
+        cluster.fork().on('online', function () {
+            console.info(`- Worker ${this.process.pid} started`);
         });
     }
 
     cluster.on('exit', (worker, code, signal) => {
-        console.log(`Worker ${worker.process.pid} died`);
-        console.log('Forking a new worker');
-        cluster.fork().on('online', function() {
-            console.log(`Worker ${this.process.pid} started`);
+        console.error(`- Worker ${worker.process.pid} died`);
+        console.info('- Forking a new worker');
+        cluster.fork().on('online', function () {
+            console.info(`- Worker ${this.process.pid} started`);
         });
     });
 
@@ -36,8 +45,7 @@ if (cluster.isMaster) {
 
     const routes = require('./routes'); // Importando todas as rotas de routes/index.js
 
-    global.version = process.env.GLOBAL_VERSION || "1.1.2";
-    global.updated = process.env.GLOBAL_UPDATED === 'true';
+    global.version = process.env.GLOBAL_VERSION || "2.0";
     global.timeout = parseInt(process.env.GLOBAL_TIMEOUT, 10) || 5000;
     global.serverPort = process.env.SERVER_PORT || 8000;
     global.now = new Date().toISOString();
@@ -45,6 +53,7 @@ if (cluster.isMaster) {
     app.use(routes); // Usando todas as rotas
 
     const server = app.listen(global.serverPort, () => {
-        console.log(`Worker ${process.pid}: Service started... listening port ${server.address().port}`);
+        console.info(`- Worker ${process.pid}: Service started... listening port ${server.address().port}`);
     });
 }
+

@@ -1,3 +1,6 @@
+// --------------------------------
+//Configurações do PM2 para o ISP.Tools
+
 module.exports = {
     apps: [{
       name: 'ISP.Tools',

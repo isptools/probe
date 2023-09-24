@@ -17,7 +17,7 @@ exports.traceroute = async function (req, res) {
             targetIP = domains[Math.floor(Math.random() * domains.length)];
         } catch (error) {
             return res.json({
-                "datetime": Date(),
+                "datetime": Date.now(),
                 "target": attrIP,
                 "err": 'host not found',
                 "sessionID": sessionID,
@@ -37,7 +37,7 @@ exports.traceroute = async function (req, res) {
 
 
         res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "ip": attrIP,
             "target": targetIP,
             "hops": tracerouteResult,
@@ -46,7 +46,7 @@ exports.traceroute = async function (req, res) {
         });
     } catch (error) {
         res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "target": targetIP,
             "err": `traceroute error: ${error.message}`,
             "sessionID": sessionID,

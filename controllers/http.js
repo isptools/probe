@@ -1,30 +1,39 @@
 const axios = require('axios');
 const https = require('https');
 
-exports.fetchHTTP = async function(req, res, next) {
+exports.fetchHTTP = async function (req, res, next) {
 
-    const attrIP = Buffer.from(req.params.id, 'base64').toString('ascii');
+    let attrIP = req.params.id;
+    const isBase64 = (str) => {
+        return /^[A-Za-z0-9+/]*={0,2}$/.test(str);
+    };
+
+    if (isBase64(attrIP)) {
+        attrIP = Buffer.from(attrIP, 'base64').toString('ascii');
+    } else {
+        attrIP = decodeURIComponent(attrIP);
+    }
 
     let parsedURL;
     try {
         parsedURL = new URL(attrIP.startsWith('http') ? attrIP : `http://${attrIP}`);
     } catch (error) {
         return res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "err": "URL inválida",
             "query": req.query
         });
     }
-    
+
     if (!parsedURL.host) {
         return res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "err": "URL inválida",
             "query": req.query
         });
     }
-    
-    
+
+
 
     const axiosConfig = {
         timeout: global.timeout || 5000,
@@ -44,9 +53,9 @@ exports.fetchHTTP = async function(req, res, next) {
         const response = await axios.get(parsedURL.href, axiosConfig);
         const { status, headers, data, request } = response;
         const certificate = request.res.connection.getPeerCertificate ? request.res.connection.getPeerCertificate() : null;
-    
+
         res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "url": parsedURL.href,
             "finalURL": response.request.res.responseUrl, // URL final após redirecionamentos
             "method": request.method, // Método da requisição
@@ -55,7 +64,6 @@ exports.fetchHTTP = async function(req, res, next) {
             "responseTime": Date.now() - startTime,
             "responseSize": data.length,
             "protocolVersion": request.res.httpVersion,
-            "body": data, // Corpo da resposta
             certificate: certificate ? {
                 subject: certificate.subject,
                 issuer: certificate.issuer,
@@ -66,6 +74,7 @@ exports.fetchHTTP = async function(req, res, next) {
                 fingerprint: certificate.fingerprint,
                 signatureAlgorithm: certificate.signatureAlgorithm
             } : null,
+            "error": null,
             "query": req.query
         });
     } catch (error) {
@@ -77,7 +86,7 @@ exports.fetchHTTP = async function(req, res, next) {
         } : { message: error.message };
 
         res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "url": parsedURL.href,
             err: errDetails,
             "query": req.query

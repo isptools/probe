@@ -21,7 +21,7 @@ exports.resolveDNS = async function(req, res) {
     // Validação do tipo de registro DNS
     if (!isValidDNSMethod(dnsMethod)) {
         return res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "method": dnsMethod,
             "host": attrIP,
             "err": "Tipo de registro DNS inválido",
@@ -33,7 +33,7 @@ exports.resolveDNS = async function(req, res) {
     try {
         const domains = await dns.resolve(attrIP, dnsMethod);
         res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "method": dnsMethod,
             "host": attrIP,
             "result": domains,
@@ -43,7 +43,7 @@ exports.resolveDNS = async function(req, res) {
         });
     } catch (err) {
         res.json({
-            "datetime": Date(),
+            "datetime": Date.now(),
             "method": dnsMethod,
             "host": attrIP,
             "err": err.message, // Use a mensagem de erro para clareza
