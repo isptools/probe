@@ -27,7 +27,7 @@ if (ligarcluster && cluster.isMaster) {
 
     for (let i = 0; i < numCPUs; i++) {
         cluster.fork().on('online', function () {
-            console.info(`- Worker ${this.process.pid} started`);
+            //console.info(`- Worker ${this.process.pid} started`);
         });
     }
 

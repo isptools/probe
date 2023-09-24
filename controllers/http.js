@@ -1,18 +1,18 @@
-const axios = require('axios');
+const http = require('http');
 const https = require('https');
 
 exports.fetchHTTP = async function (req, res, next) {
-
     let attrIP = req.params.id;
-    const isBase64 = (str) => {
-        return /^[A-Za-z0-9+/]*={0,2}$/.test(str);
-    };
+
+    const isBase64 = (str) => /^[A-Za-z0-9+/]*={0,2}$/.test(str);
 
     if (isBase64(attrIP)) {
         attrIP = Buffer.from(attrIP, 'base64').toString('ascii');
     } else {
         attrIP = decodeURIComponent(attrIP);
     }
+
+    console.log('/http/' + attrIP);
 
     let parsedURL;
     try {
@@ -33,63 +33,80 @@ exports.fetchHTTP = async function (req, res, next) {
         });
     }
 
-
-
-    const axiosConfig = {
-        timeout: global.timeout || 5000,
+    const options = {
+        host: parsedURL.host,
+        port: parsedURL.port || (parsedURL.protocol === 'https:' ? 443 : 80),
+        path: parsedURL.pathname,
+        method: 'GET',
+        rejectUnauthorized: false,
         headers: {
             'User-Agent': 'ISP.Tools/1.0'
         },
-        httpsAgent: new https.Agent({
-            rejectUnauthorized: false
-        }),
-        maxRedirects: 0,
-        validateStatus: null // Para capturar erros HTTP sem lançar uma exceção
+        timeout: global.timeout
     };
+    if (parsedURL.protocol === 'https:') {
+        options.agent = new https.Agent({
+            rejectUnauthorized: false,
+            keepAlive: false
+        });
+    }
+    const protocolHandler = parsedURL.protocol === 'https:' ? https : http;
 
     const startTime = Date.now();
 
-    try {
-        const response = await axios.get(parsedURL.href, axiosConfig);
-        const { status, headers, data, request } = response;
-        const certificate = request.res.connection.getPeerCertificate ? request.res.connection.getPeerCertificate() : null;
+    const reqHttps = protocolHandler.request(options, (response) => {
+        let data = '';
+        response.on('data', (chunk) => {
+            data += chunk;
+        });
 
+        response.on('end', () => {
+            const responseObject = {
+                "datetime": Date.now(),
+                "url": parsedURL.href,
+                "method": options.method,
+                "status": response.statusCode,
+                "statusMessage": response.statusMessage,
+                "headers": response.headers,
+                "responseTime": Date.now() - startTime,
+                "responseSize": data.length,
+                "httpVersion": response.httpVersion,
+                "error": null,
+                "query": req.query
+            };
+
+            if (parsedURL.protocol === 'https:') {
+                const certificate = response.socket.getPeerCertificate();
+                responseObject.certificate = certificate ? {
+                    subject: certificate.subject,
+                    issuer: certificate.issuer,
+                    valid_from: certificate.valid_from,
+                    valid_to: certificate.valid_to,
+                    subjectaltname: certificate.subjectaltname,
+                    infoAccess: certificate.infoAccess,
+                    bits: certificate.bits,
+                    exponent: certificate.exponent,
+                    fingerprint: certificate.fingerprint,
+                    signatureAlgorithm: certificate.signatureAlgorithm
+                } : null;
+                responseObject.tlsCipher = response.socket.getCipher();
+                responseObject.tlsVersion = response.socket.getProtocol();
+            }
+
+            res.json(responseObject);
+        });
+    });
+
+    reqHttps.on('error', (error) => {
         res.json({
             "datetime": Date.now(),
             "url": parsedURL.href,
-            "finalURL": response.request.res.responseUrl, // URL final após redirecionamentos
-            "method": request.method, // Método da requisição
-            status,
-            headers,
-            "responseTime": Date.now() - startTime,
-            "responseSize": data.length,
-            "protocolVersion": request.res.httpVersion,
-            certificate: certificate ? {
-                subject: certificate.subject,
-                issuer: certificate.issuer,
-                valid_from: certificate.valid_from,
-                valid_to: certificate.valid_to,
-                bits: certificate.bits,
-                exponent: certificate.exponent,
-                fingerprint: certificate.fingerprint,
-                signatureAlgorithm: certificate.signatureAlgorithm
-            } : null,
-            "error": null,
+            err: {
+                message: error.message
+            },
             "query": req.query
         });
-    } catch (error) {
-        const { response } = error;
-        const errDetails = response ? {
-            status: response.status,
-            headers: response.headers,
-            message: "Erro HTTP"
-        } : { message: error.message };
+    });
 
-        res.json({
-            "datetime": Date.now(),
-            "url": parsedURL.href,
-            err: errDetails,
-            "query": req.query
-        });
-    }
+    reqHttps.end();
 };

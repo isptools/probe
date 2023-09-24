@@ -6,31 +6,24 @@ exports.traceroute = async function (req, res) {
     const { id: attrIP } = req.params;
     const sessionID = req.query.sessionID;
 
-    let targetIP;
+    console.log('/traceroute/' + attrIP);
 
-    // Verifica se attrIP é um IP válido
-    if (net.isIP(attrIP)) {
-        targetIP = attrIP;
-    } else {
-        try {
-            const domains = await dns.resolve(attrIP);
-            targetIP = domains[Math.floor(Math.random() * domains.length)];
-        } catch (error) {
-            return res.json({
-                "datetime": Date.now(),
-                "target": attrIP,
-                "err": 'host not found',
-                "sessionID": sessionID,
-                "query": req.query
-            });
-        }
+    const targetIP = await determineTargetIP(attrIP);
+    if (!targetIP) {
+        return res.json({
+            datetime: Date.now(),
+            target: attrIP,
+            err: 'Unable to determine target IP',
+            sessionID,
+            query: req.query
+        });
     }
 
     try {
 
         const tracerouteOptions = {
             host: targetIP,
-            // Adicione outras opções aqui, se necessário
+            timeout: process.env.ICMP_TIMEOUT || 2000
         };
 
         const tracerouteResult = await pingus.traceroute(tracerouteOptions);
@@ -54,3 +47,26 @@ exports.traceroute = async function (req, res) {
         });
     }
 };
+
+
+async function determineTargetIP(attrIP) {
+    let parsedURL;
+
+    try {
+        const urlObject = new URL(decodeURIComponent(attrIP));
+        parsedURL = urlObject.hostname;
+    } catch (error) {
+        parsedURL = attrIP;
+    }
+
+    if (net.isIP(parsedURL)) {
+        return parsedURL;
+    } else {
+        try {
+            const domains = await dns.resolve(parsedURL);
+            return domains[Math.floor(Math.random() * domains.length)];
+        } catch (error) {
+            return null;
+        }
+    }
+}

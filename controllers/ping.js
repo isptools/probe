@@ -10,7 +10,7 @@ exports.ping = async function (req, res) {
 
     let pingOptions = {
         host: attrIP,
-        timeout: 1000,
+        timeout: process.env.ICMP_TIMEOUT || 2000,
         ttl: attrTTL,
         filterBogon: false,
     };
