@@ -47,7 +47,7 @@ exports.ping = async function (req, res) {
         })
         .catch((error) => {
             console.log('Erro no ping:', error.message);
-            res.json({
+            res.status(500).json({
                 "datetime": Date.now(),
                 "target": attrIP,
                 "err": `ping error: ${error.message}`,

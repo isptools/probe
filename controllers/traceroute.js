@@ -10,7 +10,7 @@ exports.traceroute = async function (req, res) {
 
     const targetIP = await determineTargetIP(attrIP);
     if (!targetIP) {
-        return res.json({
+        return res.status(400).json({
             datetime: Date.now(),
             target: attrIP,
             err: 'Unable to determine target IP',
@@ -38,7 +38,7 @@ exports.traceroute = async function (req, res) {
             "query": req.query
         });
     } catch (error) {
-        res.json({
+        res.status(500).json({
             "datetime": Date.now(),
             "target": targetIP,
             "err": `traceroute error: ${error.message}`,

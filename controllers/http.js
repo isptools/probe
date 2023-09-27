@@ -18,7 +18,7 @@ exports.fetchHTTP = async function (req, res, next) {
     try {
         parsedURL = new URL(attrIP.startsWith('http') ? attrIP : `http://${attrIP}`);
     } catch (error) {
-        return res.json({
+        return res.status(400).json({
             "datetime": Date.now(),
             "err": "URL inválida",
             "query": req.query
@@ -26,7 +26,7 @@ exports.fetchHTTP = async function (req, res, next) {
     }
 
     if (!parsedURL.host) {
-        return res.json({
+        return res.status(400).json({
             "datetime": Date.now(),
             "err": "URL inválida",
             "query": req.query
@@ -98,7 +98,7 @@ exports.fetchHTTP = async function (req, res, next) {
     });
 
     reqHttps.on('error', (error) => {
-        res.json({
+        res.status(500).json({
             "datetime": Date.now(),
             "url": parsedURL.href,
             err: {

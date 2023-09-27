@@ -1,10 +1,9 @@
 // corsConfig.js
 
 const allowedOrigins = [
-    'https://isp.tools',
-    'https://www.isptools.com.br',
-    'http://isp.tools',
-    'http://www.isptools.com.br'
+    'isp.tools',
+    'isptools.com.br',
+    'uppx.net.br'
 ];
 
 module.exports = {

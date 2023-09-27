@@ -20,7 +20,7 @@ exports.resolveDNS = async function(req, res) {
 
     // Validação do tipo de registro DNS
     if (!isValidDNSMethod(dnsMethod)) {
-        return res.json({
+        return res.status(400).json({
             "datetime": Date.now(),
             "method": dnsMethod,
             "host": attrIP,
@@ -42,7 +42,7 @@ exports.resolveDNS = async function(req, res) {
             "query": req.query
         });
     } catch (err) {
-        res.json({
+        res.status(500).json({
             "datetime": Date.now(),
             "method": dnsMethod,
             "host": attrIP,

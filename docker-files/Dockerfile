@@ -13,13 +13,13 @@ RUN apt-get update && apt-get install -y cron jq && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copia os arquivos do projeto
-COPY . .
+COPY ../. .
 
 # Instala as dependências do projeto
 RUN npm install
 
 # Adiciona o script de atualização e dá permissão de execução
-COPY bin/atualizacao.sh /usr/local/bin/atualizacao.sh
+COPY docker-files/atualizacao.sh /usr/local/bin/atualizacao.sh
 RUN chmod +x /usr/local/bin/atualizacao.sh
 
 # Configura o cron job para executar o script de atualização a cada hora

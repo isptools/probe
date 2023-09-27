@@ -16,10 +16,20 @@ const addIPToConsoleStamp = (req, res, next) => {
 
     next();
 };
- 
+
 // Rotas
+const allowedOrigins = [
+    'isp.tools',
+    'isptools.com.br',
+    'uppx.net.br'
+];
+router.get(cors({origin: function(origin, callback) {
+    const allowed = allowedOrigins.includes(origin)
+
+    callback(null, allowed)
+}})); // Middleware para CORS
+
 router.use(addIPToConsoleStamp); // Middleware para adicionar IP de origem ao console-stamp
-router.use(cors(corsConfig)); // CORS com múltiplas origens
 
 const pingController = require('../controllers/ping');
 router.get('/ping/:id/:ttl?/:tipo?', pingController.ping);
@@ -41,9 +51,10 @@ router.get('/', (req, res) => {
             "product": "ISP.Tools",
             "description": "Diagnostic tools for Internet Service Providers",
             "author": "Giovane Heleno (www.giovane.pro.br)",
-            "website": "www.isp.tools"
+            "website": "www.isp.tools",
+            "version": global.version,
+            "git": "https://github.com/isptools/isptools.git"
         },
-        "version": global.version,
         "updated": global.updated,
         "query": req.query,
         pid: process.pid,

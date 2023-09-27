@@ -3,13 +3,18 @@ const axios = require('axios');
 // Função que faz a requisição e retorna o estado de sucesso
 const registro = async () => {
     try {
-        const dados = { chave1: 'valor1', chave2: 'valor2' }; // Seus dados JSON
-        const resposta = await axios.post('https://ip.isp.tools', dados);
-        console.info('ISP.Tools reachable.');
+        const dados = { 
+            versao: global.versao,
+         };
+        const resposta = await axios.post('https://ip.isp.tools/', dados);
+        if(resposta.status == 200) {
+            console.warn('ISP.Tools reachable: http/'+resposta.status);
+        }
     } catch (erro) {
-        console.error('ISP.Tools unreachable.');
-        console.error('Check your firewall rules and/or DNS configuration.\nThis service needs to access the internet freely using both TCP and UDP, and receive TCP on port '+process.env.SERVER_PORT+'.');
-        console.error('See the documentation on the website www.isp.tools');
+        console.error('\nISP.Tools unreachable or rejected the request.');
+        console.error('- Check your firewall rules and/or DNS configuration.');
+        console.error('- This service needs to access the internet freely using both TCP and UDP, and receive TCP on port '+process.env.SERVER_PORT+'.');
+        console.error('- See the documentation on the website www.isp.tools\n');
         process.exit(1);
     }
 };
