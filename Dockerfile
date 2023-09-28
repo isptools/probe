@@ -1,3 +1,18 @@
+# ----------------------------------------------------------------
+# Arquivo Dockerfile para construção de imagem do ISP.Tools Probe
+# ----------------------------------------------------------------
+# Autor: Giovane Heleno
+# Data: 2023-09-28
+# Versão: 2.0
+# ----------------------------------------------------------------
+# Instruções:
+# 1. Copie o arquivo Dockerfile para o diretório raiz do projeto
+# 2. Execute o comando abaixo para construir a imagem:
+#    docker build -t isp.tools/probe:2.0 .
+# 3. Execute o comando abaixo para iniciar o container:
+#    docker run --network -d --name isp.tools-probe isp.tools/probe:2.0
+# ----------------------------------------------------------------
+
 # Use uma imagem Node.js LTS como base
 FROM node:16-slim
 
@@ -13,7 +28,7 @@ RUN apt-get update && apt-get install -y cron jq && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copia os arquivos do projeto
-COPY ../. .
+COPY . .
 
 # Instala as dependências do projeto
 RUN npm install
