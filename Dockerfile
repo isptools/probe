@@ -22,6 +22,8 @@ LABEL version="2.0"
 LABEL description="ISP.Tools Probe Module"
 
 # Instala ferramentas necessárias
+# Instala Python e outras dependências
+RUN apt-get update && apt-get install -y python3 python3-pip build-essential && rm -rf /var/lib/apt/lists/*
 RUN apt-get update && apt-get install -y cron jq && rm -rf /var/lib/apt/lists/*
 
 # Define o diretório de trabalho
@@ -32,6 +34,7 @@ COPY . .
 
 # Instala as dependências do projeto
 RUN npm install
+RUN npm install -g pm2
 
 # Adiciona o script de atualização e dá permissão de execução
 COPY docker-files/atualizacao.sh /usr/local/bin/atualizacao.sh
@@ -41,4 +44,5 @@ RUN chmod +x /usr/local/bin/atualizacao.sh
 RUN (echo "0 * * * * /usr/local/bin/atualizacao.sh") | crontab -
 
 # Inicia o cron em background e a aplicação com PM2
-CMD cron && pm2-runtime start nome_da_aplicacao
+CMD cron && pm2-runtime npm -- start
+
