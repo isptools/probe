@@ -192,7 +192,7 @@ async function startCluster(clusterStartTime) {
 				if (readyWorkers === NUM_WORKERS) {
 					const totalClusterTime = Date.now() - clusterStartTime;
 					showCompletionBanner(totalClusterTime);
-				}
+				}				
 			}
 		});
 	}
@@ -489,10 +489,9 @@ function startWorker() {
 					loadTimeMs: loadEndTime - loadStartTime
 				});
 			} else {
-				// Se não é cluster, mostrar mensagem para modo single-thread
-				console.log('');
-				console.log('Service started... listening on port %d.', serverPort);
-				console.log('');
+				// Se não é cluster, mostrar banner completo para modo single-thread
+				const totalTime = loadEndTime - loadStartTime;
+				showCompletionBanner(totalTime);
 			}
 		} catch (err) {
 			fastify.log.error(err);

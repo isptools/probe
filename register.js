@@ -1,7 +1,6 @@
-// Registro inicial da probe e keepalive.
+// Registro inicial da probe.
 //
 // - Executar registro ao iniciar o servidor
-// - Após primeiro sucesso, mudar para keepalive a cada 5 minutos
 // - Requisição POST para https://scripts.isp.tools/register repassando o campo version com a versão do probe
 // - Considerar sucesso se retornar 200 OK
 // - Considerar falha se retornar 500 ou outro erro, e exibir mensagem de erro
@@ -18,7 +17,6 @@ import cluster from 'cluster';
 const REGISTER_TIMEOUT = 60000; // 60 segundos para requisições de registro
 
 let isRegistered = false;
-const REGISTER_INTERVAL = 5 * 60 * 1000; // 5 minutos em millisegundos
 
 let url_prod = 'https://auto.isp.tools/webhook/probe';
 let url_dev = 'https://auto.isp.tools/webhook-test/probe';
@@ -192,31 +190,25 @@ function calculateRetryInterval(attempt) {
 }
 
 /**
- * Função para registrar a probe no servidor central ou enviar keepalive
+ * Função para registrar a probe no servidor central
  */
 async function registerProbe(isRetry = false) {
-    const operationType = isRegistered ? 'keepalive' : 'registration';
-    const actionText = isRegistered ? 'sending keepalive' : 'registering probe';
-
     try {
-        // Coleta informações sobre módulos e conectividade (apenas no primeiro registro)
-        let moduleInfo = {};
-        if (!isRegistered) {
-            const [installedModules, ipv4Test, ipv6Test, systemId] = await Promise.all([
-                getInstalledModules(),
-                testIPv4Connectivity(),
-                testIPv6Connectivity()
-            ]);
-            
-            moduleInfo = {
-                modules: installedModules,
-                ipv4: ipv4Test,
-                ipv6: ipv6Test
-            };
-        }
+        // Coleta informações sobre módulos e conectividade
+        const [installedModules, ipv4Test, ipv6Test] = await Promise.all([
+            getInstalledModules(),
+            testIPv4Connectivity(),
+            testIPv6Connectivity()
+        ]);
+        
+        const moduleInfo = {
+            modules: installedModules,
+            ipv4: ipv4Test,
+            ipv6: ipv6Test
+        };
 
         const requestData = {
-            type: operationType, // 'registration' ou 'keepalive'
+            type: 'registration',
             version: global.version,
             port: global.serverPort,
             ...moduleInfo
@@ -238,10 +230,9 @@ async function registerProbe(isRetry = false) {
             
             // Se houve erro anterior e agora obteve sucesso, mostrar mensagem de recuperação
             if (hadPreviousError && retryAttempt > 0) {
-                const successText = isRegistered ? 'Keepalive successful after retry' : 'Probe registration successful after retry';
                 // Só exibe no worker 1 ou se não estiver em cluster
                 if (!cluster.worker || cluster.worker.id === 1) {
-                    console.log(`✅ ${successText}`);
+                    console.log('✅ Probe registration successful after retry');
                 }
             }
             
@@ -255,51 +246,12 @@ async function registerProbe(isRetry = false) {
                 retryTimeoutId = null;
             }
             
-            if (!isRegistered) {
-                // Marca como registrada após primeiro sucesso
-                isRegistered = true;
-                
-                // Armazena informações de conectividade globalmente
-                global.ipv4Support = moduleInfo.ipv4?.supported || false;
-                global.ipv6Support = moduleInfo.ipv6?.supported || false;
-
-                // Para initializeRegistrationSync (master), não mostrar logs detalhados aqui
-                // pois já será mostrado pela função que chama
-                const shouldShowLogs = (!cluster.worker || cluster.worker.id === 1) && !isMasterInitialization;
-                
-                if (shouldShowLogs) {
-                    console.log('- Probe version:', global.version);
-                    console.log('- Request Logs:', global.showRequestLogs ? 'ENABLED' : 'DISABLED');
-                    
-                    // Exibe informações de conectividade
-                    if (moduleInfo.ipv4?.supported) {
-                        console.log('- IPv4 Support: ✓ ENABLED -', `${moduleInfo.ipv4.ip}:${moduleInfo.ipv4.port}`);
-                    } else {
-                        console.log('- IPv4 Support: ✗ DISABLED');
-                    }
-                    
-                    if (moduleInfo.ipv6?.supported) {
-                        console.log('- IPv6 Support: ✓ ENABLED -', `[${moduleInfo.ipv6.ip}]:${moduleInfo.ipv6.port}`);
-                    } else {
-                        console.log('- IPv6 Support: ✗ DISABLED');
-                    }
-
-                    if (global.isDev) {
-                        console.log('- Running in Development Mode');
-                    }
-                    
-                    console.log('-------------------------------------------------------');                
-                    console.log('- ✓ Probe registered successfully!');
-                    console.log('-\n-  🌐 Dashboard: https://www.isp.tools');
-                    console.log('------------------------------------------------------');
-                    console.log('    ___ ___ ___ _____         _    ');
-                    console.log('   |_ _/ __| _ \\_   _|__  ___| |___');
-                    console.log('    | |\\__ \\  _/ | |/ _ \\/ _ \\ (_-<');
-                    console.log('   |___|___/_|   |_|\\___/\\___/_/__/');
-                    console.log('                                    ');
-                    console.log('Copyright © 2025 Giovane Heleno\n');
-                }
-            }
+            // Marca como registrada após primeiro sucesso
+            isRegistered = true;
+            
+            // Armazena informações de conectividade globalmente
+            global.ipv4Support = moduleInfo.ipv4?.supported || false;
+            global.ipv6Support = moduleInfo.ipv6?.supported || false;
             
             return true;
         } else {
@@ -310,11 +262,9 @@ async function registerProbe(isRetry = false) {
             ? `Status ${error.response.status}: ${error.response.statusText}`
             : error.message;
         
-        const errorText = isRegistered ? 'sending keepalive' : 'registering probe';
-        
         // Só exibe no worker 1 ou se não estiver em cluster
         if (!cluster.worker || cluster.worker.id === 1) {
-            console.error(`✗ Error ${errorText}:`, errorMessage);
+            console.error('✗ Error registering probe:', errorMessage);
         }
         
         // Marca que houve erro para mostrar sucesso na próxima tentativa bem-sucedida
@@ -344,7 +294,7 @@ async function registerProbe(isRetry = false) {
 }
 
 /**
- * Inicializa o sistema de registro e keepalive
+ * Inicializa o sistema de registro
  */
 export function initializeRegistration() {
     // Só exibe no worker 1 ou se não estiver em cluster
@@ -352,11 +302,8 @@ export function initializeRegistration() {
         console.log('Registering probe...');
     }
     
-    // Executa o primeiro registro imediatamente
+    // Executa o registro imediatamente
     registerProbe();
-    
-    // Configura o intervalo de 5 minutos para keepalive
-    setInterval(registerProbe, REGISTER_INTERVAL);
 }
 
 /**
@@ -395,9 +342,6 @@ export async function initializeRegistrationSync() {
         });
 
         console.log('✅ Probe registered successfully');
-        
-        // Configura o intervalo de 5 minutos para keepalive
-        setInterval(registerProbe, REGISTER_INTERVAL);
         
         return true;
         
