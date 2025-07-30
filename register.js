@@ -24,7 +24,6 @@ let url_prod = 'https://auto.isp.tools/webhook/probe';
 let url_dev = 'https://auto.isp.tools/webhook-test/probe';
 
 const REGISTER_URL =  process.env.NODE_ENV === 'development' ? url_dev : url_prod;
-console.log(`Using registration URL: ${REGISTER_URL}`);
 
 const RETRY_BASE_INTERVAL = 10 * 1000; // 10 segundos base para retry
 const MAX_RETRY_INTERVAL = 5 * 60 * 1000; // Máximo de 5 minutos entre tentativas

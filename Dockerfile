@@ -21,8 +21,8 @@ RUN npm install --omit=dev
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8000/ || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=10 \
+    CMD wget --no-verbose --tries=1 --spider http://0.0.0.0:8000/ || exit 1
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 

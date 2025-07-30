@@ -14,6 +14,7 @@ import fs, { glob } from 'fs';
 import net from 'net';
 import { loadModules, discoverModules } from './loader.js';
 import { initializeAuth, authStatusHandler } from './auth.js';
+import { initializeRegistrationSync } from './register.js';
 
 // Configurações do cluster
 const CLUSTER_ENABLED = process.env.CLUSTER_ENABLED !== 'false'; // Default: true
@@ -113,13 +114,17 @@ async function initializeMasterProcess() {
 		await initializeAuth();
 		console.log(''); // Linha em branco
 		
-		// 2. Descobrir módulos disponíveis (cache para workers)
+		// 2. Registrar a probe no servidor central
+		await initializeRegistrationSync();
+		console.log(''); // Linha em branco
+		
+		// 3. Descobrir módulos disponíveis (cache para workers)
 		const discoveryStartTime = Date.now();
 		const discoveredModules = discoverModules();
 		const discoveryEndTime = Date.now();
 		console.log(`📦 Discovered ${discoveredModules.length} modules (${discoveryEndTime - discoveryStartTime}ms)`);
 		
-		// 3. Iniciar cluster (workers usarão cache de descoberta)
+		// 4. Iniciar cluster (workers usarão cache de descoberta)
 		const clusterStartTime = Date.now();
 		console.log(`🔧 Starting ${NUM_WORKERS} workers...`);
 		await startCluster(clusterStartTime);
@@ -434,6 +439,12 @@ function startWorker() {
 	 */
 	const start = async () => {
 		try {
+			// Se não é cluster (single-thread), fazer registro aqui
+			if (!cluster.worker) {
+				await initializeAuth();
+				await initializeRegistrationSync();
+			}
+			
 			// Marcar início do carregamento para debug
 			const loadStartTime = Date.now();
 
