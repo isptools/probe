@@ -1,21 +1,29 @@
-FROM mhart/alpine-node:6
+FROM node:lts-bullseye-slim
 
-RUN apk add --no-cache make gcc g++ python
+LABEL maintainer="Giovane Heleno" \
+      version="2.1.3" \
+      description="ISP Tools Probe - Network diagnostic tools"
 
-# Create app directory
-RUN mkdir -p /usr/src/app
-WORKDIR /usr/src/app
+COPY . /app
 
-# Install app dependencies
-COPY package.json /usr/src/app/
-RUN npm install
+WORKDIR /app
 
-RUN npm install pm2 -g
+ENV NODE_ENV=production
 
-# Bundle app source
-COPY . /usr/src/app
+RUN apt-get update && \
+    apt-get install -y git wget python3 build-essential && \
+    apt-get install -y --no-install-recommends dumb-init && \
+    npm install -g npm@latest pm2
+
+ENV PYTHON=/usr/bin/python3
+
+RUN npm install --omit=dev
 
 EXPOSE 8000
 
-CMD [ "pm2-docker", "app.js" ]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8000/ || exit 1
 
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+CMD ["pm2-runtime", "npm", "--", "start"]
