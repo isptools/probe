@@ -123,6 +123,31 @@ export async function initializeAuth() {
             // DNS resolution failed, continue
         }
 
+        // 5. Resolver DNS de scripts.isp.tools
+        try {
+            const ipv4s = await dns.resolve4('scripts.isp.tools');
+            for (const ip of ipv4s) {
+                const network = ipToNetwork(ip);
+                if (network && !authorizedIPs.includes(network)) {
+                    authorizedIPs.push(network);
+                }
+            }
+        } catch (error) {
+            // DNS resolution failed, continue
+        }
+
+        try {
+            const ipv6s = await dns.resolve6('scripts.isp.tools');
+            for (const ip of ipv6s) {
+                const network = ipToNetwork(ip);
+                if (network && !authorizedIPs.includes(network)) {
+                    authorizedIPs.push(network);
+                }
+            }
+        } catch (error) {
+            // DNS resolution failed, continue
+        }
+
         // 6. Adicionar IPs bogons e localhost
         const staticIPs = [
             // Localhost
