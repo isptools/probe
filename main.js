@@ -6,6 +6,7 @@ global.showRequestLogs = process.env.SHOW_REQUEST_LOGS === 'true';
 global.ipv4Support = false; // Será atualizado durante o registro
 global.ipv6Support = false; // Será atualizado durante o registro
 global.isDev = process.env.NODE_ENV === 'development';
+global.serverPort = process.env.PORT || 8000;
 
 import Fastify from 'fastify';
 import cluster from 'cluster';
@@ -82,10 +83,7 @@ if (CLUSTER_ENABLED && cluster.isPrimary) {
 	console.log(`🚀 ISP.Tools Probe v${version} - Cluster Mode`);
 	console.log('');
 	
-	// Verificar se porta está em uso antes de iniciar
-	const serverPort = process.env.PORT || 8000;
-	global.serverPort = serverPort; // Disponibiliza a porta globalmente no master
-	
+	let serverPort = global.serverPort;
 	checkPortInUse(serverPort).then(inUse => {
 		if (inUse) {
 			console.error(`❌ Port ${serverPort} is already in use. Please stop the other instance or use a different port.`);
