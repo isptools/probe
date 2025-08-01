@@ -1,5 +1,5 @@
 // Configurações globais
-global.version = "2.1.3";
+global.version = "2.1.4";
 global.updated = true;
 global.sID = 0;
 global.showRequestLogs = process.env.SHOW_REQUEST_LOGS === 'true';

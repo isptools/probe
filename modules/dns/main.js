@@ -12,41 +12,9 @@ export const dnsModule = {
 			let attrIP = request.params.id.toString();
 			const method = request.params.method.toString().toUpperCase();
 			
-			// Resolver hostname para IP se necessário (exceto para consultas PTR que já precisam de IP)
-			let targetHost = attrIP;
-			let resolvedIPs = null;
+			// Determinar versão do IP se attrIP já for um IP
 			let ipVersion = 0;
-
-			if (!net.isIP(attrIP) && method !== "PTR") {
-				try {
-					// Tentar resolver IPv4 primeiro
-					try {
-						const ipv4s = await dns.resolve4(attrIP);
-						resolvedIPs = ipv4s;
-						targetHost = ipv4s[0]; // Usar primeiro IP para consultas específicas
-						ipVersion = 4;
-					} catch (ipv4Error) {
-						// Se IPv4 falhar, tentar IPv6
-						const ipv6s = await dns.resolve6(attrIP);
-						resolvedIPs = ipv6s;
-						targetHost = ipv6s[0];
-						ipVersion = 6;
-					}
-				} catch (dnsError) {
-					// Para alguns métodos como TXT, MX, NS, CNAME, podemos usar o hostname diretamente
-					if (!['TXT', 'MX', 'NS', 'CNAME', 'SOA', 'SRV'].includes(method)) {
-						return {
-							"timestamp": Date.now(),
-							"method": method,
-							"host": attrIP,
-							"err": 'host not found',
-							"ipVersion": 0,
-							"responseTimeMs": Date.now() - startTime
-						};
-					}
-					targetHost = attrIP; // Usar hostname original para estes métodos
-				}
-			} else if (net.isIP(attrIP)) {
+			if (net.isIP(attrIP)) {
 				ipVersion = net.isIPv6(attrIP) ? 6 : 4;
 			}
 			
@@ -64,14 +32,21 @@ export const dnsModule = {
 			}
 
 			let result;
-			const queryTarget = (method === 'PTR' || ['TXT', 'MX', 'NS', 'CNAME', 'SOA', 'SRV'].includes(method)) ? attrIP : targetHost;
+			// Usar sempre o hostname/IP original fornecido pelo usuário
+			const queryTarget = attrIP;
 
 			switch (method) {
 				case 'A':
 					result = await dns.resolve4(queryTarget);
+					if (result && result.length > 0) {
+						ipVersion = 4;
+					}
 					break;
 				case 'AAAA':
 					result = await dns.resolve6(queryTarget);
+					if (result && result.length > 0) {
+						ipVersion = 6;
+					}
 					break;
 				case 'MX':
 					result = await dns.resolveMx(queryTarget);
@@ -102,7 +77,7 @@ export const dnsModule = {
 				"timestamp": Date.now(),
 				"method": method,
 				"host": attrIP,
-				"target": targetHost !== attrIP ? targetHost : null,
+				"target": null,
 				"result": result,
 				"err": null,
 				"ipVersion": ipVersion,

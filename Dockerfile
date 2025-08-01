@@ -1,7 +1,7 @@
 FROM node:lts-bullseye-slim
 
 LABEL maintainer="Giovane Heleno" \
-      version="2.1.3" \
+      version="2.1.4" \
       description="ISP Tools Probe - Network diagnostic tools"
 
 COPY . /app
