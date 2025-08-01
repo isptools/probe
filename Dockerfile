@@ -4,7 +4,8 @@ LABEL maintainer="Giovane Heleno" \
       version="2.1.4" \
       description="ISP Tools Probe - Network diagnostic tools"
 
-COPY . /app
+# Copiar apenas package.json e package-lock.json primeiro
+COPY package*.json ./
 
 WORKDIR /app
 
@@ -13,11 +14,17 @@ ENV NODE_ENV=production
 RUN apt-get update && \
     apt-get install -y git wget python3 build-essential && \
     apt-get install -y --no-install-recommends dumb-init && \
-    npm install -g npm@latest pm2
+    npm install -g npm@latest pm2 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 ENV PYTHON=/usr/bin/python3
 
-RUN npm install --omit=dev
+# Instalar dependências primeiro
+RUN npm ci --omit=dev
+
+# Copiar o resto dos arquivos
+COPY . /app
 
 EXPOSE 8000
 
