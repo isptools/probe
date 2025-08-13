@@ -223,6 +223,17 @@ async function registerProbe(isRetry = false) {
         });
 
         if (response.status === 200) {
+
+            if (response.data.error === true) {
+                console.log(`\n‼️ Unable to register probe.`);
+                if (response.data.code === 'ECONNABORTED') {
+                    throw new Error(`Verify that port ${global.serverPort} is publicly accessible.`);
+                } else {
+                    let error = `[${response.data.code}]: ${response.data.message}`;
+                    throw new Error(error || 'Unknown error');
+                }
+            }
+
             // Processa chave de autenticação se fornecida
             if (response.data && response.data.key && response.data.validUntil) {
                 addAuthKey(response.data.key, response.data.validUntil);
