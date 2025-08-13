@@ -222,20 +222,7 @@ async function registerProbe(isRetry = false) {
             timeout: REGISTER_TIMEOUT
         });
 
-        if (response.status === 422) {
-
-            if (response.data.error === true) {
-                console.log(`\n‼️ Unable to register probe.`);
-                if (response.data.code === 'ECONNABORTED') {
-                    throw new Error(`Verify that port ${global.serverPort} is publicly accessible.`);
-                } else {
-                    let error = `[${response.data.code}]: ${response.data.message}`;
-                    throw new Error(error || 'Unknown error');
-                }
-            }
-
-        }
-        else if (response.status === 200) {
+         if (response.status === 200) {
 
             // Processa chave de autenticação se fornecida
             if (response.data && response.data.key && response.data.validUntil) {
@@ -272,6 +259,11 @@ async function registerProbe(isRetry = false) {
             throw new Error(`Server returned status ${response.status}`);
         }
     } catch (error) {
+
+        if (error.response.status === 422) {
+            error.response.statusText = `Verify that port ${global.serverPort} is publicly accessible.`;
+        }
+
         const errorMessage = error.response?.status 
             ? `Status ${error.response.status}: ${error.response.statusText}`
             : error.message;
