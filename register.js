@@ -222,7 +222,7 @@ async function registerProbe(isRetry = false) {
             timeout: REGISTER_TIMEOUT
         });
 
-        if (response.status === 200) {
+        if (response.status === 422) {
 
             if (response.data.error === true) {
                 console.log(`\n‼️ Unable to register probe.`);
@@ -233,6 +233,9 @@ async function registerProbe(isRetry = false) {
                     throw new Error(error || 'Unknown error');
                 }
             }
+
+        }
+        else if (response.status === 200) {
 
             // Processa chave de autenticação se fornecida
             if (response.data && response.data.key && response.data.validUntil) {
