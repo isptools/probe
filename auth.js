@@ -10,6 +10,9 @@ import net from 'net';
 let authorizedIPs = [];
 let initialized = false;
 
+// Hostnames cujos IPs devem ser autorizados automaticamente
+const AUTH_HOSTNAMES = ['api.isp.tools', 'auto.isp.tools', 'scripts.isp.tools'];
+
 /**
  * Função para obter informações de IP externo
  */
@@ -98,54 +101,31 @@ export async function initializeAuth() {
             }
         }
 
-        // 4. Resolver DNS de api.isp.tools
-        try {
-            const ipv4s = await dns.resolve4('api.isp.tools');
-            for (const ip of ipv4s) {
-                const network = ipToNetwork(ip);
-                if (network && !authorizedIPs.includes(network)) {
-                    authorizedIPs.push(network);
+        // 4-5. Resolver DNS dos hostnames autorizados
+        for (const host of AUTH_HOSTNAMES) {
+            try {
+                const ipv4s = await dns.resolve4(host);
+                for (const ip of ipv4s) {
+                    const network = ipToNetwork(ip);
+                    if (network && !authorizedIPs.includes(network)) {
+                        authorizedIPs.push(network);
+                    }
                 }
+            } catch (error) {
+                // DNS resolution failed for IPv4, continue
             }
-        } catch (error) {
-            // DNS resolution failed, continue
-        }
 
-        try {
-            const ipv6s = await dns.resolve6('api.isp.tools');
-            for (const ip of ipv6s) {
-                const network = ipToNetwork(ip);
-                if (network && !authorizedIPs.includes(network)) {
-                    authorizedIPs.push(network);
+            try {
+                const ipv6s = await dns.resolve6(host);
+                for (const ip of ipv6s) {
+                    const network = ipToNetwork(ip);
+                    if (network && !authorizedIPs.includes(network)) {
+                        authorizedIPs.push(network);
+                    }
                 }
+            } catch (error) {
+                // DNS resolution failed for IPv6, continue
             }
-        } catch (error) {
-            // DNS resolution failed, continue
-        }
-
-        // 5. Resolver DNS de scripts.isp.tools
-        try {
-            const ipv4s = await dns.resolve4('scripts.isp.tools');
-            for (const ip of ipv4s) {
-                const network = ipToNetwork(ip);
-                if (network && !authorizedIPs.includes(network)) {
-                    authorizedIPs.push(network);
-                }
-            }
-        } catch (error) {
-            // DNS resolution failed, continue
-        }
-
-        try {
-            const ipv6s = await dns.resolve6('scripts.isp.tools');
-            for (const ip of ipv6s) {
-                const network = ipToNetwork(ip);
-                if (network && !authorizedIPs.includes(network)) {
-                    authorizedIPs.push(network);
-                }
-            }
-        } catch (error) {
-            // DNS resolution failed, continue
         }
 
         // 6. Adicionar IPs bogons e localhost

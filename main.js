@@ -436,11 +436,8 @@ function startWorker() {
 	 */
 	const start = async () => {
 		try {
-			// Se não é cluster (single-thread), fazer apenas autenticação aqui
-			// O registro será executado depois que o servidor estiver escutando
-			if (!cluster.worker) {
-				await initializeAuth();
-			}
+			// Garantir que a autenticação baseada em IP esteja pronta antes de abrir a porta
+			await initializeAuth();
 			
 			// Marcar início do carregamento para debug
 			const loadStartTime = Date.now();
