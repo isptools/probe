@@ -15,7 +15,7 @@ import fs, { glob } from 'fs';
 import net from 'net';
 import { loadModules, discoverModules } from './loader.js';
 import { initializeAuth, authStatusHandler } from './auth.js';
-import { initializeRegistrationSync } from './register.js';
+import { initializeRegistration, initializeRegistrationSync } from './register.js';
 
 // Configurações do cluster
 const CLUSTER_ENABLED = process.env.CLUSTER_ENABLED !== 'false'; // Default: true
@@ -111,10 +111,9 @@ async function initializeMasterProcess() {
 		// 1. Inicializar autenticação baseada em IP
 		await initializeAuth();
 		console.log(''); // Linha em branco
-		
-		// 2. Registrar a probe no servidor central
-		await initializeRegistrationSync();
-		console.log(''); // Linha em branco
+
+		// 2. Registro será feito após o servidor subir (no(s) worker(s))
+		// Mantemos apenas a autenticação aqui no master
 		
 		// 3. Descobrir módulos disponíveis (cache para workers)
 		const discoveryStartTime = Date.now();
@@ -437,10 +436,10 @@ function startWorker() {
 	 */
 	const start = async () => {
 		try {
-			// Se não é cluster (single-thread), fazer registro aqui
+			// Se não é cluster (single-thread), fazer apenas autenticação aqui
+			// O registro será executado depois que o servidor estiver escutando
 			if (!cluster.worker) {
 				await initializeAuth();
-				await initializeRegistrationSync();
 			}
 			
 			// Marcar início do carregamento para debug
@@ -460,6 +459,14 @@ function startWorker() {
 				port: serverPort, 
 				host: '0.0.0.0' 
 			});
+
+			// Após o servidor estar escutando, executar o registro
+			// Em cluster: apenas o worker 1 registra para evitar duplicidade
+			if ((cluster.worker && cluster.worker.id === 1) || !cluster.worker) {
+				// initializeRegistration: não bloqueia; initializeRegistrationSync: aguarda sucesso
+				// Usamos a versão assíncrona que faz retry em background
+				initializeRegistration();
+			}
 
 			// Configuração otimizada para proxy persistente
 			const serverConfig = {
