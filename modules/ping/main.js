@@ -18,6 +18,11 @@ function getCachedResolution(host) {
 		dnsCache.delete(host);
 		return null;
 	}
+	// Se agora IPv6 foi habilitado e a entrada era ipv6-only desabilitada, descartar para re-resolver
+	if (global.ipv6Support && entry.error === 'ipv6-only (disabled)') {
+		dnsCache.delete(host);
+		return null;
+	}
 	return entry;
 }
 
@@ -38,7 +43,6 @@ async function resolveHostWithCache(host) {
 			return entry;
 		}
 	} catch (e4) {
-		// Se IPv4 falhou e IPv6 está habilitado, tenta IPv6
 		if (global.ipv6Support) {
 			try {
 				const ipv6s = await dns.resolve6(host);
@@ -48,20 +52,40 @@ async function resolveHostWithCache(host) {
 					return entry;
 				}
 			} catch (e6) {
+				// Só cacheia negativo após registro concluído
+				if (global.registrationCompleted) {
+					const entry = { ips: [], version: 0, error: 'host not found', expires: Date.now() + DNS_CACHE_TTL };
+					dnsCache.set(host, entry);
+					return entry;
+				}
+				return { ips: [], version: 0, error: 'host not found' };
+			}
+		} else {
+			// IPv6 desabilitado: verificar se host é IPv6-only para mensagem mais clara
+			try {
+				const ipv6s = await dns.resolve6(host);
+				if (Array.isArray(ipv6s) && ipv6s.length) {
+					// Não cachear antes de registro concluído
+					const entry = { ips: ipv6s, version: 6, error: 'ipv6-only (disabled)', expires: Date.now() + DNS_CACHE_TTL };
+					if (global.registrationCompleted) dnsCache.set(host, entry);
+					return entry;
+				}
+			} catch (_) { /* ignorar */ }
+			if (global.registrationCompleted) {
 				const entry = { ips: [], version: 0, error: 'host not found', expires: Date.now() + DNS_CACHE_TTL };
 				dnsCache.set(host, entry);
 				return entry;
 			}
-		} else {
-			const entry = { ips: [], version: 0, error: 'host not found', expires: Date.now() + DNS_CACHE_TTL };
-			dnsCache.set(host, entry);
-			return entry;
+			return { ips: [], version: 0, error: 'host not found' };
 		}
 	}
 	// Se chegou aqui sem retorno, marcar como não encontrado
-	const entry = { ips: [], version: 0, error: 'host not found', expires: Date.now() + DNS_CACHE_TTL };
-	dnsCache.set(host, entry);
-	return entry;
+	if (global.registrationCompleted) {
+		const entry = { ips: [], version: 0, error: 'host not found', expires: Date.now() + DNS_CACHE_TTL };
+		dnsCache.set(host, entry);
+		return entry;
+	}
+	return { ips: [], version: 0, error: 'host not found' };
 }
 
 // Função auxiliar trim
@@ -92,6 +116,19 @@ export const ping = {
 			if (!net.isIP(attrIP)) {
 				const resolution = await resolveHostWithCache(attrIP);
 				if (resolution.error) {
+					if (resolution.error === 'ipv6-only (disabled)') {
+						return {
+							"timestamp": Date.now(),
+							"target": attrIP,
+							"ip": resolution.ips,
+							"err": 'IPv6 not supported on this probe',
+							"sessionID": sessionID,
+							"ipVersion": 6,
+							"responseTimeMs": Date.now() - startTime,
+							"cache": true,
+							"ipv6Only": true
+						};
+					}
 					return {
 						"timestamp": Date.now(),
 						"target": attrIP,

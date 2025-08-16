@@ -253,6 +253,10 @@ async function registerProbe(isRetry = false) {
             // Armazena informações de conectividade globalmente
             global.ipv4Support = moduleInfo.ipv4?.supported || false;
             global.ipv6Support = moduleInfo.ipv6?.supported || false;
+            global.registrationCompleted = true;
+            if (global.ipv6Support) {
+                global.ipv6EnabledAt = Date.now();
+            }
             
             return true;
         } else {
