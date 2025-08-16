@@ -8,7 +8,9 @@ import { optionalAuthMiddleware } from '../../auth.js';
 const PING_TIMEOUT = 1000; // 1 segundo para ping
 const DNS_CACHE_TTL = 60000; // 60s de cache para resolução
 
-// Cache simples em memória por worker: Map<host, { ips:[], version:4|6, expires:number, error?:string }>
+// Cache simples em memória por worker: Map<host, { ips:[], version:4|6, expires:number }>
+// Estratégia: cache APENAS resoluções positivas. Nunca cacheia negativas ou estados "ipv6-only (disabled)"
+// para evitar prender estado quando IPv6 for habilitado depois do primeiro uso.
 const dnsCache = new Map();
 
 function getCachedResolution(host) {
@@ -18,12 +20,7 @@ function getCachedResolution(host) {
 		dnsCache.delete(host);
 		return null;
 	}
-	// Se agora IPv6 foi habilitado e a entrada era ipv6-only desabilitada, descartar para re-resolver
-	if (global.ipv6Support && entry.error === 'ipv6-only (disabled)') {
-		dnsCache.delete(host);
-		return null;
-	}
-	return entry;
+	return entry; // sempre positivo
 }
 
 async function resolveHostWithCache(host) {
@@ -42,50 +39,28 @@ async function resolveHostWithCache(host) {
 			dnsCache.set(host, entry);
 			return entry;
 		}
-	} catch (e4) {
-		if (global.ipv6Support) {
-			try {
-				const ipv6s = await dns.resolve6(host);
-				if (Array.isArray(ipv6s) && ipv6s.length) {
-					const entry = { ips: ipv6s, version: 6, expires: Date.now() + DNS_CACHE_TTL };
-					dnsCache.set(host, entry);
-					return entry;
-				}
-			} catch (e6) {
-				// Só cacheia negativo após registro concluído
-				if (global.registrationCompleted) {
-					const entry = { ips: [], version: 0, error: 'host not found', expires: Date.now() + DNS_CACHE_TTL };
-					dnsCache.set(host, entry);
-					return entry;
-				}
-				return { ips: [], version: 0, error: 'host not found' };
-			}
-		} else {
-			// IPv6 desabilitado: verificar se host é IPv6-only para mensagem mais clara
-			try {
-				const ipv6s = await dns.resolve6(host);
-				if (Array.isArray(ipv6s) && ipv6s.length) {
-					// Não cachear antes de registro concluído
-					const entry = { ips: ipv6s, version: 6, error: 'ipv6-only (disabled)', expires: Date.now() + DNS_CACHE_TTL };
-					if (global.registrationCompleted) dnsCache.set(host, entry);
-					return entry;
-				}
-			} catch (_) { /* ignorar */ }
-			if (global.registrationCompleted) {
-				const entry = { ips: [], version: 0, error: 'host not found', expires: Date.now() + DNS_CACHE_TTL };
+	} catch (e4) { /* continua para tentativa IPv6 */ }
+
+	if (global.ipv6Support) {
+		try {
+			const ipv6s = await dns.resolve6(host);
+			if (Array.isArray(ipv6s) && ipv6s.length) {
+				const entry = { ips: ipv6s, version: 6, expires: Date.now() + DNS_CACHE_TTL };
 				dnsCache.set(host, entry);
 				return entry;
 			}
-			return { ips: [], version: 0, error: 'host not found' };
-		}
+		} catch (e6) { /* sem sucesso */ }
+		return { ips: [], version: 0, error: 'host not found' };
+	} else {
+		// Verifica se é IPv6-only para mensagem diferenciada (sem cache)
+		try {
+			const ipv6s = await dns.resolve6(host);
+			if (Array.isArray(ipv6s) && ipv6s.length) {
+				return { ips: ipv6s, version: 6, error: 'ipv6-only (disabled)' };
+			}
+		} catch (_) { /* ignorar */ }
+		return { ips: [], version: 0, error: 'host not found' };
 	}
-	// Se chegou aqui sem retorno, marcar como não encontrado
-	if (global.registrationCompleted) {
-		const entry = { ips: [], version: 0, error: 'host not found', expires: Date.now() + DNS_CACHE_TTL };
-		dnsCache.set(host, entry);
-		return entry;
-	}
-	return { ips: [], version: 0, error: 'host not found' };
 }
 
 // Função auxiliar trim
@@ -125,7 +100,6 @@ export const ping = {
 							"sessionID": sessionID,
 							"ipVersion": 6,
 							"responseTimeMs": Date.now() - startTime,
-							"cache": true,
 							"ipv6Only": true
 						};
 					}
@@ -135,8 +109,7 @@ export const ping = {
 						"err": resolution.error,
 						"sessionID": sessionID,
 						"ipVersion": 0,
-						"responseTimeMs": Date.now() - startTime,
-						"cache": true
+						"responseTimeMs": Date.now() - startTime
 					};
 				}
 				resolvedIPs = resolution.ips;
