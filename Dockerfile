@@ -4,9 +4,6 @@ LABEL maintainer="Giovane Heleno" \
       version="2.1.4" \
       description="ISP Tools Probe - Network diagnostic tools"
 
-# Copiar apenas package.json e package-lock.json primeiro
-COPY package*.json ./
-
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -20,11 +17,11 @@ RUN apt-get update && \
 
 ENV PYTHON=/usr/bin/python3
 
+# clonar repositório
+RUN git clone https://github.com/isptools/probe.git .
+
 # Instalar dependências primeiro
 RUN npm ci --omit=dev
-
-# Copiar o resto dos arquivos
-COPY . /app
 
 EXPOSE 8000
 

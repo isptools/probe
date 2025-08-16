@@ -154,7 +154,8 @@ export const ping = {
 			// Executar ping usando biblioteca net-ping (seleciona protocolo correto)
 			let sessionOptions = {
 				timeout: PING_TIMEOUT,
-				retries: 1
+				retries: 1,
+				ttl: attrTTL
 			};
 			try {
 				if (ipVersion === 6 && netPing.NetworkProtocol && netPing.NetworkProtocol.IPv6) {
