@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "NODE_ENV=production node main.js",
-    "dev": "NODE_ENV=development CLUSTER_ENABLED=false SHOW_REQUEST_LOGS=true nodemon main.js"
+    "dev": "NODE_ENV=development CLUSTER_ENABLED=false SHOW_REQUEST_LOGS=true nodemon main.js",
+    "test:dns": "node testa_resolucao_dns.js"
   },
   "author": "Giovane Heleno",
   "license": "MIT",
