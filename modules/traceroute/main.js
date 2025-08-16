@@ -17,6 +17,7 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 	const hops = [];
 	let reachedDestination = false;
 	let timeouts = 0;
+	const isIPv6 = net.isIPv6(targetIP);
 	
 	for (let ttl = 1; ttl <= maxHops; ttl++) {
 		try {
@@ -24,11 +25,19 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 			const attempts = [];
 			
 			for (let attempt = 0; attempt < 2; attempt++) {
-				const session = netPing.createSession({
+				const sessionOptions = {
 					timeout: timeout,
 					retries: 0,
 					ttl: ttl
-				});
+				};
+				try {
+					if (isIPv6 && netPing.NetworkProtocol?.IPv6) {
+						sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv6;
+					} else if (!isIPv6 && netPing.NetworkProtocol?.IPv4) {
+						sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv4;
+					}
+				} catch (_) { /* ignore */ }
+				const session = netPing.createSession(sessionOptions);
 
 				const hopResult = await new Promise((resolve) => {
 					const startTime = Date.now();
@@ -186,11 +195,15 @@ export const tracerouteModule = {
 						targetIP = ipv4s[0]; // Usar primeiro IP para traceroute
 						ipVersion = 4;
 					} catch (ipv4Error) {
-						// Se IPv4 falhar, tentar IPv6
-						const ipv6s = await dns.resolve6(attrIP);
-						resolvedIPs = ipv6s;
-						targetIP = ipv6s[0];
-						ipVersion = 6;
+						// Se IPv4 falhar e suporte IPv6 habilitado, tentar IPv6
+						if (global.ipv6Support) {
+							const ipv6s = await dns.resolve6(attrIP);
+							resolvedIPs = ipv6s;
+							targetIP = ipv6s[0];
+							ipVersion = 6;
+						} else {
+							throw ipv4Error; // Mantém erro original se IPv6 não é permitido
+						}
 					}
 				} catch (err) {
 					return {
@@ -203,7 +216,18 @@ export const tracerouteModule = {
 					};
 				}
 			} else {
-				ipVersion = net.isIPv6(attrIP) ? 6 : 4;
+				const is6 = net.isIPv6(attrIP);
+				if (is6 && !global.ipv6Support) {
+					return {
+						"timestamp": Date.now(),
+						"target": attrIP,
+						"err": 'IPv6 not supported on this probe',
+						"sessionID": sessionID,
+						"ipVersion": 6,
+						"responseTimeMs": Date.now() - startTime
+					};
+				}
+				ipVersion = is6 ? 6 : 4;
 			}
 
 			// Executar traceroute

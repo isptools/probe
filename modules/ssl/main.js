@@ -194,25 +194,27 @@ export const sslModule = {
 			let ipVersion = 0;
 
 			try {
-				// Tentar resolver IPv4 primeiro
 				try {
 					const ipv4s = await dns.resolve4(hostname);
 					resolvedIPs = ipv4s;
 					targetIP = ipv4s[0];
 					ipVersion = 4;
 				} catch (ipv4Error) {
-					// Se IPv4 falhar, tentar IPv6
-					const ipv6s = await dns.resolve6(hostname);
-					resolvedIPs = ipv6s;
-					targetIP = ipv6s[0];
-					ipVersion = 6;
+					if (global.ipv6Support) {
+						const ipv6s = await dns.resolve6(hostname);
+						resolvedIPs = ipv6s;
+						targetIP = ipv6s[0];
+						ipVersion = 6;
+					} else {
+						throw ipv4Error;
+					}
 				}
 			} catch (dnsError) {
 				return {
 					"timestamp": Date.now(),
 					"host": hostname,
 					"port": port,
-					"err": 'hostname not found',
+					"err": !global.ipv6Support ? 'hostname not found (IPv6 disabled)' : 'hostname not found',
 					"ipVersion": 0,
 					"responseTimeMs": Date.now() - startTime
 				};

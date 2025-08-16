@@ -16,7 +16,44 @@ export const dnsModule = {
 			let ipVersion = 0;
 			if (net.isIP(attrIP)) {
 				ipVersion = net.isIPv6(attrIP) ? 6 : 4;
+					if (ipVersion === 6 && !global.ipv6Support) {
+						return {
+							"timestamp": Date.now(),
+							"method": method,
+							"host": attrIP,
+							"result": null,
+							"err": 'IPv6 not supported on this probe',
+							"ipVersion": 6,
+							"responseTimeMs": Date.now() - startTime
+						};
+					}
 			}
+
+				// Bloquear resolução AAAA quando suporte IPv6 desabilitado
+				if (method === 'AAAA' && !global.ipv6Support) {
+					return {
+						"timestamp": Date.now(),
+						"method": method,
+						"host": attrIP,
+						"result": null,
+						"err": 'IPv6 not supported on this probe',
+						"ipVersion": 6,
+						"responseTimeMs": Date.now() - startTime
+					};
+				}
+
+				// PTR para IPv6 desabilitado
+				if (method === 'PTR' && net.isIPv6(attrIP) && !global.ipv6Support) {
+					return {
+						"timestamp": Date.now(),
+						"method": method,
+						"host": attrIP,
+						"result": null,
+						"err": 'IPv6 not supported on this probe',
+						"ipVersion": 6,
+						"responseTimeMs": Date.now() - startTime
+					};
+				}
 			
 			if (method === "PTR" && !net.isIP(attrIP)) {
 				return {

@@ -33,11 +33,14 @@ export const mtuModule = {
 						targetIP = ipv4s[0];
 						ipVersion = 4;
 					} catch (ipv4Error) {
-						// Se IPv4 falhar, tentar IPv6
-						const ipv6s = await dns.resolve6(attrIP);
-						resolvedIPs = ipv6s;
-						targetIP = ipv6s[0];
-						ipVersion = 6;
+						if (global.ipv6Support) {
+							const ipv6s = await dns.resolve6(attrIP);
+							resolvedIPs = ipv6s;
+							targetIP = ipv6s[0];
+							ipVersion = 6;
+						} else {
+							throw ipv4Error;
+						}
 					}
 				} catch (err) {
 					return {
@@ -50,7 +53,18 @@ export const mtuModule = {
 					};
 				}
 			} else {
-				ipVersion = net.isIPv6(attrIP) ? 6 : 4;
+				const is6 = net.isIPv6(attrIP);
+				if (is6 && !global.ipv6Support) {
+					return {
+						"timestamp": Date.now(),
+						"target": attrIP,
+						"err": 'IPv6 not supported on this probe',
+						"sessionID": sessionID,
+						"ipVersion": 6,
+						"responseTimeMs": Date.now() - startTime
+					};
+				}
+				ipVersion = is6 ? 6 : 4;
 			}
 
 			// Executar descoberta de MTU

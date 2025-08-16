@@ -87,38 +87,18 @@ export const ping = {
 
 			// Verificar se IPv6 é suportado; se flag global indicar falso, tentar detectar dinamicamente
 			if (ipVersion === 6 && !global.ipv6Support) {
-				let dynamicIPv6Ok = false;
-				try {
-					const detectSession = netPing.createSession({
-						timeout: 500,
-						retries: 0,
-						networkProtocol: netPing.NetworkProtocol?.IPv6
-					});
-					await new Promise((resolve) => {
-						detectSession.pingHost(targetIP, (err) => {
-							if (!err) dynamicIPv6Ok = true;
-							try { detectSession.close(); } catch (_) {}
-							resolve();
-						});
-					});
-				} catch (_) { /* ignore */ }
-				if (dynamicIPv6Ok) {
-					global.ipv6Support = true; // Atualiza flag para futuras requisições
-				} else {
-					return {
-						"timestamp": Date.now(),
-						"ip": resolvedIPs,
-						"target": targetIP,
-						"ms": null,
-						"ttl": attrTTL,
-						"err": 'IPv6 not supported on this probe',
-						"sessionID": sessionID,
-						"sID": sID,
-						"ipVersion": ipVersion,
-						"responseTimeMs": Date.now() - startTime,
-						"_dynamicCheck": true
-					};
-				}
+				return {
+					"timestamp": Date.now(),
+					"ip": resolvedIPs,
+					"target": targetIP,
+					"ms": null,
+					"ttl": attrTTL,
+					"err": 'IPv6 not supported on this probe',
+					"sessionID": sessionID,
+					"sID": sID,
+					"ipVersion": 6,
+					"responseTimeMs": Date.now() - startTime
+				};
 			}
 
 			// Executar ping usando biblioteca net-ping (seleciona protocolo correto)
