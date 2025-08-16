@@ -76,16 +76,21 @@ async function callProbe(host) {
 
 function analyze(r) {
   const probs = [];
-  if (r.records.AAAA.ips.length && !r.probe.body.ip?.length && r.probe.body.ipVersion === 4) {
+  const body = r.probe && r.probe.body ? r.probe.body : null;
+  if (!r.probe.ok) {
+    probs.push('Falha ao conectar ao endpoint /ping (servidor offline ou porta diferente).');
+    return probs;
+  }
+  if (r.records.AAAA.ips.length && body && !body.ip?.length && body.ipVersion === 4) {
     probs.push('Probe retornou ipVersion=4 mas resolução AAAA disponível.');
   }
-  if (r.probe.body.err && /Invalid IP address/.test(r.probe.body.err)) {
+  if (body && body.err && /Invalid IP address/.test(body.err)) {
     probs.push('targetIP indefinido antes do ping (possível lista vazia não tratada).');
   }
   if (r.records.AAAA.ips.length && r.ping6.filter(p => p.ok).length === 0) {
     probs.push('Resolução AAAA ok, mas ICMP falhou em todos IPv6 (firewall ou ausência de suporte).');
   }
-  if (r.ping6.some(p => p.ok) && r.probe.body.err === 'IPv6 not supported on this probe') {
+  if (body && r.ping6.some(p => p.ok) && body.err === 'IPv6 not supported on this probe') {
     probs.push('Biblioteca net-ping conseguiu IPv6, mas aplicação marcou ipv6Support=false (flag global não atualizada).');
   }
   return probs;
@@ -113,8 +118,8 @@ function analyze(r) {
   console.log(JSON.stringify(probe, null, 2));
   hr();
 
-  const report = { records, ping4, ping6, probe: probe.body || {}, problems: [] };
-  report.problems = analyze({ records, ping4, ping6, probe: probe, });
+  const report = { records, ping4, ping6, probe: probe, problems: [] };
+  report.problems = analyze({ records, ping4, ping6, probe });
   console.log('Análise:');
   console.log(JSON.stringify({ problems: report.problems }, null, 2));
 

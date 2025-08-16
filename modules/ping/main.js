@@ -85,27 +85,53 @@ export const ping = {
 				};
 			}
 
-			// Verificar se IPv6 é suportado na probe quando necessário
+			// Verificar se IPv6 é suportado; se flag global indicar falso, tentar detectar dinamicamente
 			if (ipVersion === 6 && !global.ipv6Support) {
-				return {
-					"timestamp": Date.now(),
-					"ip": resolvedIPs,
-					"target": targetIP,
-					"ms": null,
-					"ttl": attrTTL,
-					"err": 'IPv6 not supported on this probe',
-					"sessionID": sessionID,
-					"sID": sID,
-					"ipVersion": ipVersion,
-					"responseTimeMs": Date.now() - startTime
-				};
+				let dynamicIPv6Ok = false;
+				try {
+					const detectSession = netPing.createSession({
+						timeout: 500,
+						retries: 0,
+						networkProtocol: netPing.NetworkProtocol?.IPv6
+					});
+					await new Promise((resolve) => {
+						detectSession.pingHost(targetIP, (err) => {
+							if (!err) dynamicIPv6Ok = true;
+							try { detectSession.close(); } catch (_) {}
+							resolve();
+						});
+					});
+				} catch (_) { /* ignore */ }
+				if (dynamicIPv6Ok) {
+					global.ipv6Support = true; // Atualiza flag para futuras requisições
+				} else {
+					return {
+						"timestamp": Date.now(),
+						"ip": resolvedIPs,
+						"target": targetIP,
+						"ms": null,
+						"ttl": attrTTL,
+						"err": 'IPv6 not supported on this probe',
+						"sessionID": sessionID,
+						"sID": sID,
+						"ipVersion": ipVersion,
+						"responseTimeMs": Date.now() - startTime,
+						"_dynamicCheck": true
+					};
+				}
 			}
 
-			// Executar ping usando biblioteca net-ping
-			const session = netPing.createSession({
+			// Executar ping usando biblioteca net-ping (seleciona protocolo correto)
+			let sessionOptions = {
 				timeout: PING_TIMEOUT,
 				retries: 1
-			});
+			};
+			try {
+				if (ipVersion === 6 && netPing.NetworkProtocol && netPing.NetworkProtocol.IPv6) {
+					sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv6;
+				}
+			} catch (_) { /* fallback silencioso */ }
+			const session = netPing.createSession(sessionOptions);
 
 			// Função para executar ping com Promise
 			const pingTarget = (target) => {
