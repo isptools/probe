@@ -31,23 +31,28 @@ export const ping = {
 			let targetIP = attrIP;
 			let resolvedIPs = null;
 			let ipVersion = 0;
-			
+
 			if (!net.isIP(attrIP)) {
-				try {
-					// Tentar resolver IPv4 primeiro
+				const tryResolve = async () => {
+					// Primeiro IPv4
 					try {
 						const ipv4s = await dns.resolve4(attrIP);
-						resolvedIPs = ipv4s;
-						targetIP = ipv4s[Math.floor(Math.random() * ipv4s.length)];
-						ipVersion = 4;
-					} catch (ipv4Error) {
-						// Se IPv4 falhar, tentar IPv6
+						if (Array.isArray(ipv4s) && ipv4s.length > 0) {
+							return { ips: ipv4s, version: 4 };
+						}
+					} catch (_) { /* ignora e tenta IPv6 */ }
+					// Depois IPv6
+					try {
 						const ipv6s = await dns.resolve6(attrIP);
-						resolvedIPs = ipv6s;
-						targetIP = ipv6s[Math.floor(Math.random() * ipv6s.length)];
-						ipVersion = 6;
-					}
-				} catch (err) {
+						if (Array.isArray(ipv6s) && ipv6s.length > 0) {
+							return { ips: ipv6s, version: 6 };
+						}
+					} catch (_) { /* sem registros */ }
+					return null;
+				};
+
+				const resolved = await tryResolve();
+				if (!resolved) {
 					return {
 						"timestamp": Date.now(),
 						"target": attrIP,
@@ -57,8 +62,27 @@ export const ping = {
 						"responseTimeMs": Date.now() - startTime
 					};
 				}
+				resolvedIPs = resolved.ips;
+				ipVersion = resolved.version;
+				targetIP = resolvedIPs[Math.floor(Math.random() * resolvedIPs.length)];
 			} else {
 				ipVersion = net.isIPv6(attrIP) ? 6 : 4;
+			}
+
+			// Segurança extra: evitar undefined
+			if (!targetIP || !net.isIP(targetIP)) {
+				return {
+					"timestamp": Date.now(),
+					"ip": resolvedIPs || [],
+					"target": targetIP || attrIP,
+					"ms": null,
+					"ttl": attrTTL,
+					"err": 'host not found',
+					"sessionID": sessionID,
+					"sID": sID,
+					"ipVersion": ipVersion || 0,
+					"responseTimeMs": Date.now() - startTime
+				};
 			}
 
 			// Verificar se IPv6 é suportado na probe quando necessário
