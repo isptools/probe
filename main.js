@@ -190,6 +190,24 @@ async function startCluster(clusterStartTime) {
 					const totalClusterTime = Date.now() - clusterStartTime;
 					showCompletionBanner(totalClusterTime);
 				}				
+			} else if (msg.type === 'network-config') {
+				// Atualizar configurações globais no master
+				global.ipv4Support = msg.ipv4Support;
+				global.ipv6Support = msg.ipv6Support;
+				
+				// Retransmitir para todos os workers
+				for (const workerId in cluster.workers) {
+					const targetWorker = cluster.workers[workerId];
+					if (targetWorker && targetWorker.id !== worker.id) { // Não enviar de volta ao remetente
+						targetWorker.send({
+							type: 'network-config-update',
+							ipv4Support: msg.ipv4Support,
+							ipv6Support: msg.ipv6Support
+						});
+					}
+				}
+				
+				console.log(`📡 Network config updated: IPv4=${msg.ipv4Support}, IPv6=${msg.ipv6Support}`);
 			}
 		});
 	}
@@ -480,6 +498,19 @@ function startWorker() {
 			fastify.server.requestTimeout = serverConfig.requestTimeout;
 			fastify.server.maxHeadersCount = serverConfig.maxHeadersCount;
 			fastify.server.maxRequestsPerSocket = serverConfig.maxRequestsPerSocket;
+
+			// Handler para receber atualizações de configuração de rede do master
+			if (cluster.worker) {
+				process.on('message', (msg) => {
+					if (msg.type === 'network-config-update') {
+						global.ipv4Support = msg.ipv4Support;
+						global.ipv6Support = msg.ipv6Support;
+						global.registrationCompleted = true;
+						global.ipv6EnabledAt = Date.now();
+						console.log(`🔧 Worker ${cluster.worker.id} updated network config: IPv4=${msg.ipv4Support}, IPv6=${msg.ipv6Support}`);
+					}
+				});
+			}
 
 			// Workers não fazem registro - já foi feito pelo master
 			

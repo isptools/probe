@@ -253,6 +253,17 @@ async function registerProbe(isRetry = false) {
             // Armazena informações de conectividade globalmente
             global.ipv4Support = moduleInfo.ipv4?.supported || false;
             global.ipv6Support = moduleInfo.ipv6?.supported || false;
+            global.registrationCompleted = true;
+            global.ipv6EnabledAt = Date.now();
+            
+            // Se estiver em cluster, notificar o master sobre as configurações IPv4/IPv6
+            if (cluster.worker) {
+                process.send({
+                    type: 'network-config',
+                    ipv4Support: global.ipv4Support,
+                    ipv6Support: global.ipv6Support
+                });
+            }
             
             return true;
         } else {
