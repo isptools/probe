@@ -186,64 +186,35 @@ export const tracerouteModule = {
 			let resolvedIPs = null;
 			let ipVersion = 0;
 			
-			if (!net.isIP(attrIP)) {
+		if (!net.isIP(attrIP)) {
+			try {
+				// Tentar resolver IPv4 primeiro
 				try {
-					// Tentar resolver IPv4 primeiro
-					try {
-						const ipv4s = await dns.resolve4(attrIP);
-						resolvedIPs = ipv4s;
-						targetIP = ipv4s[0]; // Usar primeiro IP para traceroute
-						ipVersion = 4;
-					} catch (ipv4Error) {
-						// Se IPv4 falhar, tentar IPv6 sempre (independente de global.ipv6Support)
-						try {
-							const ipv6s = await dns.resolve6(attrIP);
-							resolvedIPs = ipv6s;
-							targetIP = ipv6s[0];
-							ipVersion = 6;
-							
-							// Verificar se IPv6 é realmente suportado só na hora de usar
-							if (!global.ipv6Support) {
-								return {
-									"timestamp": Date.now(),
-									"target": attrIP,
-									"err": 'host has IPv6 only but IPv6 not supported on this probe',
-									"sessionID": sessionID,
-									"ipVersion": 6,
-									"responseTimeMs": Date.now() - startTime
-								};
-							}
-						} catch (ipv6Error) {
-							// Se ambos falharam, usar erro mais específico
-							throw ipv4Error; // Mantém erro IPv4 original
-						}
-					}
-				} catch (err) {
-					return {
-						"timestamp": Date.now(),
-						"target": attrIP,
-						"err": 'host not found',
-						"sessionID": sessionID,
-						"ipVersion": 0,
-						"responseTimeMs": Date.now() - startTime
-					};
+					const ipv4s = await dns.resolve4(attrIP);
+					resolvedIPs = ipv4s;
+					targetIP = ipv4s[0]; // Usar primeiro IP para traceroute
+					ipVersion = 4;
+				} catch (ipv4Error) {
+					// Se IPv4 falhar, tentar IPv6 sempre
+					const ipv6s = await dns.resolve6(attrIP);
+					resolvedIPs = ipv6s;
+					targetIP = ipv6s[0];
+					ipVersion = 6;
 				}
-			} else {
-				const is6 = net.isIPv6(attrIP);
-				if (is6 && !global.ipv6Support) {
-					return {
-						"timestamp": Date.now(),
-						"target": attrIP,
-						"err": 'IPv6 not supported on this probe',
-						"sessionID": sessionID,
-						"ipVersion": 6,
-						"responseTimeMs": Date.now() - startTime
-					};
-				}
-				ipVersion = is6 ? 6 : 4;
+			} catch (err) {
+				return {
+					"timestamp": Date.now(),
+					"target": attrIP,
+					"err": 'host not found',
+					"sessionID": sessionID,
+					"ipVersion": 0,
+					"responseTimeMs": Date.now() - startTime
+				};
 			}
-
-			// Executar traceroute
+		} else {
+			const is6 = net.isIPv6(attrIP);
+			ipVersion = is6 ? 6 : 4;
+		}			// Executar traceroute
 			const result = await performTraceroute(targetIP, maxHops, TRACEROUTE_TIMEOUT);
 
 			return {

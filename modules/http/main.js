@@ -62,34 +62,21 @@ export const httpModule = {
 						resolvedIPs = ipv4s;
 						ipVersion = 4;
 					} catch (ipv4Error) {
-						// Se IPv4 falhar, tentar IPv6 apenas se habilitado
-						if (global.ipv6Support) {
-							const ipv6s = await dns.resolve6(hostname);
-							resolvedIPs = ipv6s;
-							ipVersion = 6;
-						} else {
-							throw ipv4Error; // mantém falha de resolução
-						}
+						// Se IPv4 falhar, tentar IPv6 sempre
+						const ipv6s = await dns.resolve6(hostname);
+						resolvedIPs = ipv6s;
+						ipVersion = 6;
 					}
 				} catch (dnsError) {
 					return {
 						"timestamp": Date.now(),
 						"url": attrIP,
-						"err": (dnsError && !global.ipv6Support ? 'host not found (IPv6 disabled)' : 'DNS resolution failed: ' + dnsError.message),
+						"err": 'DNS resolution failed: ' + dnsError.message,
 						"ipVersion": 0,
 						"responseTimeMs": Date.now() - startTime
 					};
 				}
 			} else if (net.isIP(hostname)) {
-				if (net.isIPv6(hostname) && !global.ipv6Support) {
-					return {
-						"timestamp": Date.now(),
-						"url": attrIP,
-						"err": 'IPv6 not supported on this probe',
-						"ipVersion": 6,
-						"responseTimeMs": Date.now() - startTime
-					};
-				}
 				ipVersion = net.isIPv6(hostname) ? 6 : 4;
 			}
 
@@ -111,35 +98,21 @@ export const httpModule = {
 								currentResolvedIPs = ipv4s;
 								currentIpVersion = 4;
 							} catch (ipv4Error) {
-								if (global.ipv6Support) {
-									const ipv6s = await dns.resolve6(currentParsedUrl.hostname);
-									currentResolvedIPs = ipv6s;
-									currentIpVersion = 6;
-								} else {
-									throw ipv4Error;
-								}
+								const ipv6s = await dns.resolve6(currentParsedUrl.hostname);
+								currentResolvedIPs = ipv6s;
+								currentIpVersion = 6;
 							}
 						} catch (dnsError) {
 							reject({
 								"timestamp": Date.now(),
 								"url": targetUrl,
-								"err": (dnsError && !global.ipv6Support ? 'host not found (IPv6 disabled)' : 'DNS resolution failed: ' + dnsError.message),
+								"err": 'DNS resolution failed: ' + dnsError.message,
 								"ipVersion": 0,
 								"responseTimeMs": Date.now() - startTime
 							});
 							return;
 						}
 					} else if (net.isIP(currentParsedUrl.hostname)) {
-						if (net.isIPv6(currentParsedUrl.hostname) && !global.ipv6Support) {
-							reject({
-								"timestamp": Date.now(),
-								"url": targetUrl,
-								"err": 'IPv6 not supported on this probe',
-								"ipVersion": 6,
-								"responseTimeMs": Date.now() - startTime
-							});
-							return;
-						}
 						currentIpVersion = net.isIPv6(currentParsedUrl.hostname) ? 6 : 4;
 					}
 					

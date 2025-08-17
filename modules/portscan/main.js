@@ -152,14 +152,10 @@ export const portscanModule = {
 						targetHost = ipv4s[0];
 						ipVersion = 4;
 					} catch (ipv4Error) {
-						if (global.ipv6Support) {
-							const ipv6s = await dns.resolve6(attrIP);
-							resolvedIPs = ipv6s;
-							targetHost = ipv6s[0];
-							ipVersion = 6;
-						} else {
-							throw ipv4Error;
-						}
+						const ipv6s = await dns.resolve6(attrIP);
+						resolvedIPs = ipv6s;
+						targetHost = ipv6s[0];
+						ipVersion = 6;
 					}
 				} catch (dnsError) {
 					return {
@@ -174,17 +170,6 @@ export const portscanModule = {
 				}
 			} else {
 				const is6 = net.isIPv6(attrIP);
-				if (is6 && !global.ipv6Support) {
-					return {
-						"timestamp": Date.now(),
-						"protocol": protocol,
-						"method": method,
-						"host": attrIP,
-						"err": 'IPv6 not supported on this probe',
-						"ipVersion": 6,
-						"responseTimeMs": Date.now() - startTime
-					};
-				}
 				ipVersion = is6 ? 6 : 4;
 			}
 

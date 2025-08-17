@@ -41,26 +41,17 @@ async function resolveHostWithCache(host) {
 		}
 	} catch (e4) { /* continua para tentativa IPv6 */ }
 
-	if (global.ipv6Support) {
-		try {
-			const ipv6s = await dns.resolve6(host);
-			if (Array.isArray(ipv6s) && ipv6s.length) {
-				const entry = { ips: ipv6s, version: 6, expires: Date.now() + DNS_CACHE_TTL };
-				dnsCache.set(host, entry);
-				return entry;
-			}
-		} catch (e6) { /* sem sucesso */ }
-		return { ips: [], version: 0, error: 'host not found' };
-	} else {
-		// Verifica se é IPv6-only para mensagem diferenciada (sem cache)
-		try {
-			const ipv6s = await dns.resolve6(host);
-			if (Array.isArray(ipv6s) && ipv6s.length) {
-				return { ips: ipv6s, version: 6, error: 'ipv6-only (disabled)' };
-			}
-		} catch (_) { /* ignorar */ }
-		return { ips: [], version: 0, error: 'host not found' };
-	}
+	// Tentar IPv6 sempre, independente de global.ipv6Support
+	try {
+		const ipv6s = await dns.resolve6(host);
+		if (Array.isArray(ipv6s) && ipv6s.length) {
+			const entry = { ips: ipv6s, version: 6, expires: Date.now() + DNS_CACHE_TTL };
+			dnsCache.set(host, entry);
+			return entry;
+		}
+	} catch (e6) { /* sem sucesso */ }
+	
+	return { ips: [], version: 0, error: 'host not found' };
 }
 
 // Função auxiliar trim
@@ -131,22 +122,6 @@ export const ping = {
 					"sessionID": sessionID,
 					"sID": sID,
 					"ipVersion": ipVersion || 0,
-					"responseTimeMs": Date.now() - startTime
-				};
-			}
-
-			// Verificar se IPv6 é suportado; se flag global indicar falso, tentar detectar dinamicamente
-			if (ipVersion === 6 && !global.ipv6Support) {
-				return {
-					"timestamp": Date.now(),
-					"ip": resolvedIPs,
-					"target": targetIP,
-					"ms": null,
-					"ttl": attrTTL,
-					"err": 'IPv6 not supported on this probe',
-					"sessionID": sessionID,
-					"sID": sID,
-					"ipVersion": 6,
 					"responseTimeMs": Date.now() - startTime
 				};
 			}
