@@ -195,14 +195,27 @@ export const tracerouteModule = {
 						targetIP = ipv4s[0]; // Usar primeiro IP para traceroute
 						ipVersion = 4;
 					} catch (ipv4Error) {
-						// Se IPv4 falhar e suporte IPv6 habilitado, tentar IPv6
-						if (global.ipv6Support) {
+						// Se IPv4 falhar, tentar IPv6 sempre (independente de global.ipv6Support)
+						try {
 							const ipv6s = await dns.resolve6(attrIP);
 							resolvedIPs = ipv6s;
 							targetIP = ipv6s[0];
 							ipVersion = 6;
-						} else {
-							throw ipv4Error; // Mantém erro original se IPv6 não é permitido
+							
+							// Verificar se IPv6 é realmente suportado só na hora de usar
+							if (!global.ipv6Support) {
+								return {
+									"timestamp": Date.now(),
+									"target": attrIP,
+									"err": 'host has IPv6 only but IPv6 not supported on this probe',
+									"sessionID": sessionID,
+									"ipVersion": 6,
+									"responseTimeMs": Date.now() - startTime
+								};
+							}
+						} catch (ipv6Error) {
+							// Se ambos falharam, usar erro mais específico
+							throw ipv4Error; // Mantém erro IPv4 original
 						}
 					}
 				} catch (err) {
