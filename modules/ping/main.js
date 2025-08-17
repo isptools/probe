@@ -127,23 +127,63 @@ export const ping = {
 			}
 
 			// Implementação de ping via raw-socket
-			// Suporte atual: IPv4. Para IPv6 retornar mensagem de não suportado (pode ser estendido depois).
-			if (ipVersion === 6) {
-				return {
-					"timestamp": Date.now(),
-					"ip": resolvedIPs,
-					"target": targetIP,
-					"ms": null,
-					"ttl": attrTTL,
-					"err": 'IPv6 raw ping não suportado ainda',
-					"sessionID": sessionID,
-					"sID": sID,
-					"ipVersion": ipVersion,
-					"responseTimeMs": Date.now() - startTime
-				};
-			}
+			// Agora com suporte a IPv4 e IPv6 (ICMPv6) mantendo controle de TTL / Hop Limit
 
-			const pingWithRawSocket = async (target, ttl) => {
+			// Utilidades IPv6
+			const parseIPv6 = (addr) => {
+				// Lida com endereços encurtados ::
+				if (addr.includes('%')) addr = addr.split('%')[0]; // remove zone index
+				let parts = addr.split('::');
+				let head = parts[0] ? parts[0].split(':').filter(Boolean) : [];
+				let tail = parts[1] ? parts[1].split(':').filter(Boolean) : [];
+				if (parts.length === 1) {
+					if (head.length !== 8) return null;
+				} else {
+					// Preenche zeros
+					const fill = 8 - (head.length + tail.length);
+					for (let i = 0; i < fill; i++) head.push('0');
+					head = head.concat(tail);
+				}
+				if (head.length !== 8) return null;
+				const buf = Buffer.alloc(16);
+				for (let i = 0; i < 8; i++) {
+					const word = parseInt(head[i], 16) & 0xFFFF;
+					buf.writeUInt16BE(word, i * 2);
+				}
+				return buf;
+			};
+
+			const buildICMPv6Checksum = (srcBuf, dstBuf, icmpBuf) => {
+				const pseudo = Buffer.alloc(40 + icmpBuf.length);
+				srcBuf.copy(pseudo, 0);
+				dstBuf.copy(pseudo, 16);
+				pseudo.writeUInt32BE(icmpBuf.length, 32); // Upper-Layer Packet Length
+				// bytes 36,37,38 = 0
+				pseudo.writeUInt8(58, 39); // Next Header ICMPv6
+				icmpBuf.copy(pseudo, 40);
+				const sum = raw.createChecksum(pseudo);
+				return sum;
+			};
+
+			// Descobrir endereço local adequado para IPv6 (para pseudo-header) usando socket UDP6
+			const discoverLocalIPv6 = (dest) => new Promise((resolve) => {
+				import('dgram').then(({ default: dgram }) => {
+					const s = dgram.createSocket('udp6');
+					let done = false;
+					s.on('error', () => { if (!done) { done = true; try { s.close(); } catch (_) { } resolve(null); } });
+					s.connect(33434, dest, () => {
+						if (done) return; done = true;
+						const a = s.address();
+						try { s.close(); } catch (_) { }
+						resolve(a && a.address ? a.address : null);
+					});
+				}).catch(() => resolve(null));
+			});
+
+			// Estratégia: escolher implementação conforme versão
+			const isIPv6 = ipVersion === 6;
+
+			const pingWithRawSocketV4 = async (target, ttl) => {
 				return new Promise((resolve) => {
 					let socket;
 					let finished = false;
@@ -238,7 +278,77 @@ export const ping = {
 				});
 			};
 
-			const result = await pingWithRawSocket(targetIP, attrTTL);
+			const pingWithRawSocketV6 = async (target, hopLimit) => {
+				return new Promise(async (resolve) => {
+					let socket; let finished = false; const startedAt = Date.now();
+					const mapErr = (msg) => {
+						if (!msg) return msg;
+						if (/operation not permitted/i.test(msg)) return 'raw socket permission denied (need CAP_NET_RAW)';
+						return msg;
+					};
+					try {
+						socket = raw.createSocket({ protocol: raw.Protocol.ICMPv6 });
+						try { socket.setOption(raw.SocketLevel.IPPROTO_IPV6, raw.SocketOption.IPV6_UNICAST_HOPS, hopLimit); } catch (_) { }
+						// Monta Echo Request (Tipo 128, Code 0)
+						const payload = Buffer.from('ISPTOOLS');
+						const icmp = Buffer.alloc(8 + payload.length);
+						const TYPE_ECHO_REQUEST_V6 = 128;
+						const CODE = 0;
+						const identifier = (process.pid + sID) & 0xFFFF;
+						const sequence = sID & 0xFFFF;
+						icmp.writeUInt8(TYPE_ECHO_REQUEST_V6, 0);
+						icmp.writeUInt8(CODE, 1);
+						icmp.writeUInt16BE(0, 2); // checksum placeholder
+						icmp.writeUInt16BE(identifier, 4);
+						icmp.writeUInt16BE(sequence, 6);
+						payload.copy(icmp, 8);
+
+						// Pseudo-header checksum
+						const dstBuf = parseIPv6(target);
+						let srcAddr = await discoverLocalIPv6(target);
+						const srcBuf = parseIPv6(srcAddr || '::1');
+						if (dstBuf && srcBuf) {
+							const checksum = buildICMPv6Checksum(srcBuf, dstBuf, icmp);
+							icmp.writeUInt16BE(checksum, 2);
+						}
+
+						socket.on('message', (buffer, source) => {
+							if (finished) return;
+							// Em muitos sistemas a mensagem já vem iniciando no ICMPv6
+							let offset = 0;
+							const type = buffer[offset];
+							const code = buffer[offset + 1];
+							if (type === 129 && code === 0) { // Echo Reply
+								const rIdentifier = buffer.readUInt16BE(offset + 4);
+								const rSequence = buffer.readUInt16BE(offset + 6);
+								if (rIdentifier === identifier && rSequence === sequence && source === target) {
+									finished = true;
+									const rtt = Date.now() - startedAt;
+									try { socket.close(); } catch (_) { }
+									return resolve({ alive: true, time: rtt });
+								}
+							}
+						});
+
+						socket.on('error', (err) => {
+							if (finished) return;
+							finished = true; try { socket.close(); } catch (_) { }
+							return resolve({ alive: false, error: mapErr(err.message) });
+						});
+
+						socket.send(icmp, 0, icmp.length, target, (err) => {
+							if (err && !finished) { finished = true; try { socket.close(); } catch (_) { } return resolve({ alive: false, error: err.message }); }
+						});
+
+						setTimeout(() => { if (finished) return; finished = true; try { socket.close(); } catch (_) { } return resolve({ alive: false, error: 'timeout' }); }, PING_TIMEOUT);
+
+					} catch (err) {
+						if (!finished) { finished = true; try { if (socket) socket.close(); } catch (_) { } return resolve({ alive: false, error: mapErr(err.message) }); }
+					}
+				});
+			};
+
+			const result = isIPv6 ? await pingWithRawSocketV6(targetIP, attrTTL) : await pingWithRawSocketV4(targetIP, attrTTL);
 
 			return {
 				"timestamp": Date.now(),
