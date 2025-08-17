@@ -1,11 +1,87 @@
 import { promises as dns } from 'dns';
 import net from 'net';
 import netPing from 'net-ping';
+import { execFile } from 'child_process';
 import { optionalAuthMiddleware } from '../../auth.js';
 
 // Configuração específica do módulo TRACEROUTE
-const TRACEROUTE_TIMEOUT = 500; // Reduzido para 500ms por hop
+const TRACEROUTE_TIMEOUT = 500; // 500ms por hop (net-ping)
 const MAX_CONSECUTIVE_TIMEOUTS = 5; // Parar após 5 timeouts consecutivos
+const FALLBACK_CMD_TIMEOUT_MS = 8000; // Timeout total para fallback externo
+const FALLBACK_ENABLED = true; // Pode futuramente virar env
+
+function debugLog(...args) {
+	// Centraliza logs para poder desligar fácil depois
+	console.log('[TRACEROUTE DEBUG]', ...args);
+}
+
+async function fallbackSystemTraceroute(targetIP, ipVersion, maxHops) {
+	// Usa comando do sistema para tentar obter hops (melhor para IPv6)
+	// Preferir traceroute -n (sem reverse DNS) para performance
+	return new Promise((resolve) => {
+		if (process.platform !== 'linux') {
+			return resolve({ success: false, reason: 'platform_not_linux' });
+		}
+
+		const args = [];
+		// -n: não faz reverse DNS, -w 1: timeout resposta, -q 1: 1 probe, -m maxHops
+		if (ipVersion === 6) args.push('-6');
+		args.push('-n', '-w', '1', '-q', '1', '-m', String(maxHops), targetIP);
+
+		debugLog('Executando fallback traceroute externo:', 'traceroute', args.join(' '));
+
+		const child = execFile('traceroute', args, { timeout: FALLBACK_CMD_TIMEOUT_MS }, (err, stdout, stderr) => {
+			if (err) {
+				debugLog('Fallback traceroute erro:', err.message);
+				return resolve({ success: false, error: err.message, stderr });
+			}
+			try {
+				const lines = stdout.split('\n').slice(1); // pula cabeçalho
+				const hops = [];
+				for (const line of lines) {
+					const trimmed = line.trim();
+					if (!trimmed) continue;
+					const hopMatch = /^\s*(\d+)\s+(.+)$/.exec(line);
+					if (!hopMatch) continue;
+					const hopNum = parseInt(hopMatch[1]);
+					// Identificar se timeout total (linha cheia de * )
+					if (trimmed.includes('* * *') || /^\d+\s+\* /.test(trimmed)) {
+						hops.push({ hop: hopNum, ip: null, hostname: null, responseTime: null, status: 'timeout' });
+						continue;
+					}
+					// Extrair primeiro token IP
+					const parts = hopMatch[2].split(/\s+/);
+					let ip = null;
+					for (const p of parts) {
+						if (/^[0-9a-fA-F:.]+$/.test(p) && p !== 'ms') { ip = p; break; }
+					}
+					// Extrair tempo (primeiro número antes de ms)
+					let ms = null;
+					const timeMatch = /([0-9]+(?:\.[0-9]+)?)\s*ms/.exec(line);
+					if (timeMatch) ms = parseFloat(timeMatch[1]);
+					hops.push({ hop: hopNum, ip: ip, hostname: ip, responseTime: ms, status: ip ? 'reply' : 'timeout' });
+				}
+				if (!hops.length) {
+					return resolve({ success: false, error: 'empty_output' });
+				}
+				const reachedDestination = hops.some(h => h.ip === targetIP);
+				resolve({
+					success: true,
+					hops,
+					reachedDestination,
+					totalHops: hops.length
+				});
+			} catch (parseErr) {
+				resolve({ success: false, error: 'parse_error: ' + parseErr.message });
+			}
+		});
+		// Segurança: se processo travar
+		child.on('error', (procErr) => {
+			debugLog('Erro ao spawn fallback traceroute:', procErr.message);
+			resolve({ success: false, error: procErr.message });
+		});
+	});
+}
 
 // Função auxiliar trim
 const trim = (s) => {
@@ -15,16 +91,16 @@ const trim = (s) => {
 
 // Função para fazer traceroute usando net-ping
 async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TIMEOUT) {
-	console.log('[TRACEROUTE DEBUG] performTraceroute iniciado - IP:', targetIP, 'maxHops:', maxHops, 'timeout:', timeout);
+	debugLog('performTraceroute iniciado - IP:', targetIP, 'maxHops:', maxHops, 'timeout:', timeout);
 	const hops = [];
 	let reachedDestination = false;
 	let timeouts = 0;
 	let consecutiveTimeouts = 0; // Contador para timeouts consecutivos
 	const isIPv6 = net.isIPv6(targetIP);
-	console.log('[TRACEROUTE DEBUG] É IPv6:', isIPv6);
+	debugLog('É IPv6:', isIPv6);
 	
 	for (let ttl = 1; ttl <= maxHops; ttl++) {
-		console.log('[TRACEROUTE DEBUG] Hop', ttl, 'de', maxHops);
+		debugLog('Hop', ttl, 'de', maxHops);
 		try {
 			// Fazer apenas 1 tentativa por hop para ser mais rápido
 			const attempts = [];
@@ -42,7 +118,7 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 						sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv4;
 					}
 				} catch (protocolError) { 
-					console.log('[TRACEROUTE DEBUG] Erro ao configurar protocolo:', protocolError.message);
+					debugLog('Erro ao configurar protocolo:', protocolError.message);
 				}
 				
 				const session = netPing.createSession(sessionOptions);
@@ -142,18 +218,18 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 			
 			// Se chegamos ao destino, parar
 			if (reachedDestination) {
-				console.log('[TRACEROUTE DEBUG] Destino alcançado, parando');
+				debugLog('Destino alcançado, parando');
 				break;
 			}
 			
 			// Se muitos timeouts consecutivos, parar para economizar tempo
 			if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
-				console.log('[TRACEROUTE DEBUG] Muitos timeouts consecutivos (', consecutiveTimeouts, '), parando traceroute');
+				debugLog('Muitos timeouts consecutivos (', consecutiveTimeouts, '), parando traceroute');
 				break;
 			}
 			
 		} catch (sessionError) {
-			console.log('[TRACEROUTE DEBUG] Erro na sessão:', sessionError.message);
+			debugLog('Erro na sessão:', sessionError.message);
 			hops.push({
 				hop: ttl,
 				ip: null,
@@ -167,7 +243,7 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 		
 		// Se muitos timeouts consecutivos, parar para economizar tempo
 		if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
-			console.log('[TRACEROUTE DEBUG] Muitos timeouts consecutivos após erro, parando traceroute');
+			debugLog('Muitos timeouts consecutivos após erro, parando traceroute');
 			break;
 		}
 		
@@ -258,9 +334,35 @@ export const tracerouteModule = {
 		
 		console.log('[TRACEROUTE DEBUG] Iniciando traceroute para IP:', targetIP, 'versão:', ipVersion);
 		
-		// Executar traceroute
+		// Executar traceroute (net-ping)
 		const result = await performTraceroute(targetIP, maxHops, TRACEROUTE_TIMEOUT);
-		console.log('[TRACEROUTE DEBUG] Traceroute concluído:', result.totalHops, 'hops');
+		debugLog('Traceroute (net-ping) concluído:', result.totalHops, 'hops');
+
+		let finalResult = result;
+		let usedFallback = false;
+		if (FALLBACK_ENABLED) {
+			const onlyTimeouts = result.hops.length > 0 && result.hops.every(h => !h.ip);
+			if (onlyTimeouts) {
+				debugLog('Todos hops timeout ou sem IP -> tentando fallback system traceroute');
+				try {
+					const fallback = await fallbackSystemTraceroute(targetIP, ipVersion, Math.min(maxHops, 20));
+					if (fallback.success && fallback.hops.some(h => h.ip)) {
+						debugLog('Fallback system traceroute obteve', fallback.hops.length, 'hops');
+						finalResult = {
+							hops: fallback.hops,
+							reachedDestination: fallback.reachedDestination,
+							totalHops: fallback.totalHops,
+							timeouts: fallback.hops.filter(h => !h.ip).length
+						};
+						usedFallback = true;
+					} else {
+						debugLog('Fallback falhou ou sem hops úteis:', fallback.error || fallback.reason);
+					}
+				} catch (fbErr) {
+					debugLog('Erro no fallback system traceroute:', fbErr.message);
+				}
+			}
+		}
 
 		return {
 				"timestamp": Date.now(),
@@ -268,10 +370,11 @@ export const tracerouteModule = {
 				"targetIP": targetIP,
 				"resolvedIPs": resolvedIPs,
 				"maxHops": maxHops,
-				"totalHops": result.totalHops,
-				"reachedDestination": result.reachedDestination,
-				"timeouts": result.timeouts,
-				"hops": result.hops,
+				"totalHops": finalResult.totalHops,
+				"reachedDestination": finalResult.reachedDestination,
+				"timeouts": finalResult.timeouts,
+				"hops": finalResult.hops,
+				"fallbackUsed": usedFallback,
 				"sessionID": sessionID,
 				"sID": sID,
 				"ipVersion": ipVersion,
