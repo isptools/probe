@@ -86,23 +86,29 @@ export const ping = {
 				if (resolution.error) {
 					if (resolution.error === 'ipv6-only (disabled)') {
 						return {
-							"timestamp": Date.now(),
+							"datetime": new Date().toString(),
 							"target": attrIP,
-							"ip": resolution.ips,
-							"err": 'IPv6 not supported on this probe',
-							"sessionID": sessionID,
-							"ipVersion": 6,
-							"responseTimeMs": Date.now() - startTime,
-							"ipv6Only": true
+							"ms": null,
+							"ttl": attrTTL,
+							"err": {
+								"name": "IPv6NotSupportedError",
+								"message": "IPv6 not supported on this probe"
+							},
+							"sID": sID,
+							"query": request.query || {}
 						};
 					}
 					return {
-						"timestamp": Date.now(),
+						"datetime": new Date().toString(),
 						"target": attrIP,
-						"err": resolution.error,
-						"sessionID": sessionID,
-						"ipVersion": 0,
-						"responseTimeMs": Date.now() - startTime
+						"ms": null,
+						"ttl": attrTTL,
+						"err": {
+							"name": "HostNotFoundError",
+							"message": resolution.error
+						},
+						"sID": sID,
+						"query": request.query || {}
 					};
 				}
 				resolvedIPs = resolution.ips;
@@ -115,16 +121,16 @@ export const ping = {
 			// Segurança extra: evitar undefined
 			if (!targetIP || !net.isIP(targetIP)) {
 				return {
-					"timestamp": Date.now(),
-					"ip": resolvedIPs || [],
+					"datetime": new Date().toString(),
 					"target": targetIP || attrIP,
 					"ms": null,
 					"ttl": attrTTL,
-					"err": 'host not found',
-					"sessionID": sessionID,
+					"err": {
+						"name": "HostNotFoundError",
+						"message": "host not found"
+					},
 					"sID": sID,
-					"ipVersion": ipVersion || 0,
-					"responseTimeMs": Date.now() - startTime
+					"query": request.query || {}
 				};
 			}
 
@@ -368,28 +374,45 @@ export const ping = {
 
 			const result = isIPv6 ? await pingWithRawSocketV6(targetIP, attrTTL) : await pingWithRawSocketV4(targetIP, attrTTL);
 
+			// Formatar resposta no formato esperado
+			let errorObj = null;
+			if (!result.alive) {
+				if (result.error === 'ttlExpired') {
+					errorObj = {
+						"name": "TimeExceededError",
+						"message": `Time exceeded (source=${result.hopIP})`,
+						"source": result.hopIP
+					};
+				} else {
+					errorObj = {
+						"name": "RequestTimedOutError",
+						"message": result.error || 'timeout'
+					};
+				}
+			}
+
 			return {
-				"timestamp": Date.now(),
-				"ip": resolvedIPs,
+				"datetime": new Date().toString(),
 				"target": targetIP,
 				"ms": result.alive ? Math.round(result.time) : null,
 				"ttl": attrTTL,
-				"err": result.alive ? null : (result.error || 'timeout'),
-				"hopIP": result.hopIP || null,
-				"sessionID": sessionID,
+				"err": errorObj,
 				"sID": sID,
-				"ipVersion": ipVersion,
-				"responseTimeMs": Date.now() - startTime
+				"query": request.query || {}
 			};
 
 		} catch (error) {
 			return {
-				"timestamp": Date.now(),
+				"datetime": new Date().toString(),
 				"target": request.params.id,
-				"err": error.message,
-				"sessionID": request.query.sessionID,
+				"ms": null,
+				"ttl": attrTTL || 128,
+				"err": {
+					"name": "InternalError", 
+					"message": error.message
+				},
 				"sID": global.sID,
-				"responseTimeMs": Date.now() - startTime
+				"query": request.query || {}
 			};
 		}
 	}
