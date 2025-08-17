@@ -1,7 +1,7 @@
 
 import { promises as dns } from 'dns';
 import net from 'net';
-import netPing from 'net-ping';
+import raw from 'raw-socket';
 import { optionalAuthMiddleware } from '../../auth.js';
 
 // Configuração específica do módulo PING
@@ -126,43 +126,119 @@ export const ping = {
 				};
 			}
 
-			// Executar ping usando biblioteca net-ping (seleciona protocolo correto)
-			let sessionOptions = {
-				timeout: PING_TIMEOUT,
-				retries: 1,
-				ttl: attrTTL
-			};
-			try {
-				if (ipVersion === 6 && netPing.NetworkProtocol && netPing.NetworkProtocol.IPv6) {
-					sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv6;
-				}
-			} catch (_) { /* fallback silencioso */ }
-			const session = netPing.createSession(sessionOptions);
+			// Implementação de ping via raw-socket
+			// Suporte atual: IPv4. Para IPv6 retornar mensagem de não suportado (pode ser estendido depois).
+			if (ipVersion === 6) {
+				return {
+					"timestamp": Date.now(),
+					"ip": resolvedIPs,
+					"target": targetIP,
+					"ms": null,
+					"ttl": attrTTL,
+					"err": 'IPv6 raw ping não suportado ainda',
+					"sessionID": sessionID,
+					"sID": sID,
+					"ipVersion": ipVersion,
+					"responseTimeMs": Date.now() - startTime
+				};
+			}
 
-			// Função para executar ping com Promise
-			const pingTarget = (target) => {
-				return new Promise((resolve, reject) => {
-					const startTime = Date.now();
-					session.pingHost(target, (error, target, sent, rcvd) => {
-						if (error) {
-							resolve({
-								alive: false,
-								time: null,
-								error: error.message
-							});
-						} else {
-							const responseTime = Date.now() - startTime;
-							resolve({
-								alive: true,
-								time: responseTime,
-								error: null
-							});
+			const pingWithRawSocket = async (target, ttl) => {
+				return new Promise((resolve) => {
+					let socket;
+					let finished = false;
+					const startedAt = Date.now();
+					const mapErr = (msg) => {
+						if (!msg) return msg;
+						if (/operation not permitted/i.test(msg) || /epERM/i.test(msg)) return 'raw socket permission denied (need CAP_NET_RAW)';
+						return msg;
+					};
+					try {
+						// Cria socket ICMP
+						socket = raw.createSocket({ protocol: raw.Protocol.ICMP });
+
+						// Ajusta TTL
+						try {
+							socket.setOption(raw.SocketLevel.IPPROTO_IP, raw.SocketOption.IP_TTL, ttl);
+						} catch (eTTL) { /* ignora falha em setar TTL */ }
+
+						// Constrói pacote ICMP Echo Request
+						const payload = Buffer.from('ISPTOOLS');
+						const icmpHeader = Buffer.alloc(8 + payload.length);
+						const TYPE_ECHO = 8; // request
+						const CODE = 0;
+						const identifier = (process.pid + sID) & 0xFFFF; // ID para correlacionar
+						const sequence = sID & 0xFFFF;
+
+						icmpHeader.writeUInt8(TYPE_ECHO, 0);
+						icmpHeader.writeUInt8(CODE, 1);
+						icmpHeader.writeUInt16BE(0, 2); // checksum placeholder
+						icmpHeader.writeUInt16BE(identifier, 4);
+						icmpHeader.writeUInt16BE(sequence, 6);
+						payload.copy(icmpHeader, 8);
+
+						// Calcula checksum
+						const checksum = raw.createChecksum(icmpHeader);
+						icmpHeader.writeUInt16BE(checksum, 2);
+
+						// Handler de resposta
+						socket.on('message', (buffer, source) => {
+							if (finished) return;
+							// Detecta se buffer inclui cabeçalho IP
+							let offset = 0;
+							if (buffer.length >= 20 && (buffer[0] >> 4) === 4) {
+								const ihl = buffer[0] & 0x0f;
+								offset = ihl * 4;
+							}
+							// Tipo de resposta echo reply = 0
+							const type = buffer[offset];
+							const code = buffer[offset + 1];
+							const rIdentifier = buffer.readUInt16BE(offset + 4);
+							const rSequence = buffer.readUInt16BE(offset + 6);
+							if (type === 0 && code === 0 && rIdentifier === identifier && rSequence === sequence && source === target) {
+								finished = true;
+								const rtt = Date.now() - startedAt;
+								try { socket.close(); } catch (_) { }
+								return resolve({ alive: true, time: rtt });
+							}
+						});
+
+						// Trata erros
+						socket.on('error', (err) => {
+							if (finished) return;
+							finished = true;
+							try { socket.close(); } catch (_) { }
+							return resolve({ alive: false, error: mapErr(err.message) });
+						});
+
+						// Envia pacote
+						socket.send(icmpHeader, 0, icmpHeader.length, target, (err) => {
+							if (err && !finished) {
+								finished = true;
+								try { socket.close(); } catch (_) { }
+								return resolve({ alive: false, error: err.message });
+							}
+						});
+
+						// Timeout
+						setTimeout(() => {
+							if (finished) return;
+							finished = true;
+							try { socket.close(); } catch (_) { }
+							return resolve({ alive: false, error: 'timeout' });
+						}, PING_TIMEOUT);
+
+					} catch (err) {
+						if (!finished) {
+							finished = true;
+							try { if (socket) socket.close(); } catch (_) { }
+							return resolve({ alive: false, error: mapErr(err.message) });
 						}
-					});
+					}
 				});
 			};
 
-			const result = await pingTarget(targetIP);
+			const result = await pingWithRawSocket(targetIP, attrTTL);
 
 			return {
 				"timestamp": Date.now(),
