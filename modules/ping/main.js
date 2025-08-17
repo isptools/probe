@@ -251,12 +251,19 @@ export const ping = {
 								try { socket.close(); } catch (_) { }
 								return resolve({ alive: true, time: rtt });
 							}
-							// Time Exceeded (TTL expirado) type 11
-							if (type === 11) {
+							// Time Exceeded (TTL expirado) type 11, code 0
+							if (type === 11 && code === 0) {
 								finished = true;
 								const rtt = Date.now() - startedAt;
 								try { socket.close(); } catch (_) { }
 								return resolve({ alive: false, time: rtt, error: 'ttlExpired', hopIP: source });
+							}
+							// Destination Unreachable type 3
+							if (type === 3) {
+								finished = true;
+								const rtt = Date.now() - startedAt;
+								try { socket.close(); } catch (_) { }
+								return resolve({ alive: false, time: rtt, error: 'unreachable', hopIP: source });
 							}
 						});
 
@@ -345,12 +352,19 @@ export const ping = {
 									return resolve({ alive: true, time: rtt });
 								}
 							}
-							// ICMPv6 Time Exceeded type 3
-							if (type === 3) {
+							// ICMPv6 Time Exceeded type 3, code 0 (hop limit exceeded)
+							if (type === 3 && code === 0) {
 								finished = true;
 								const rtt = Date.now() - startedAt;
 								try { socket.close(); } catch (_) { }
 								return resolve({ alive: false, time: rtt, error: 'ttlExpired', hopIP: source });
+							}
+							// Também capturar qualquer mensagem de erro type 1 (Destination unreachable)
+							if (type === 1) {
+								finished = true;
+								const rtt = Date.now() - startedAt;
+								try { socket.close(); } catch (_) { }
+								return resolve({ alive: false, time: rtt, error: 'unreachable', hopIP: source });
 							}
 						});
 
@@ -381,6 +395,12 @@ export const ping = {
 					errorObj = {
 						"name": "TimeExceededError",
 						"message": `Time exceeded (source=${result.hopIP})`,
+						"source": result.hopIP
+					};
+				} else if (result.error === 'unreachable') {
+					errorObj = {
+						"name": "DestinationUnreachableError",
+						"message": `Destination unreachable (source=${result.hopIP})`,
 						"source": result.hopIP
 					};
 				} else {
