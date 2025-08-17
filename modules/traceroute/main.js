@@ -3,13 +3,17 @@ import net from 'net';
 import raw from 'raw-socket';
 import { optionalAuthMiddleware } from '../../auth.js';
 
-// Configuração para traceroute via raw-socket
+// Constantes de comportamento (manter mesmas semantics/valores)
 const RAW_TIMEOUT_PER_HOP = 700; // ms
 const MAX_CONSECUTIVE_TIMEOUTS = 8;
 const DEFAULT_PAYLOAD_SIZE = 32;
 
-function debugLog(...args) { console.log('[TRACEROUTE RAW]', ...args); }
+const debugLog = (...a) => console.log('[TRACEROUTE RAW]', ...a);
+const trim = (s) => (typeof s === 'string' ? s.trim() : '');
 
+// --------------------------------------------------
+// Utilidades ICMP
+// --------------------------------------------------
 function checksum(buf) {
 	let sum = 0;
 	for (let i = 0; i < buf.length; i += 2) {
@@ -20,44 +24,31 @@ function checksum(buf) {
 }
 
 function buildIcmpEcho(isIPv6, identifier, seq) {
-	// IPv4 ICMP Echo: Type 8, Code 0
-	// IPv6 ICMPv6 Echo Request: Type 128, Code 0
-	const type = isIPv6 ? 128 : 8;
-	const code = 0;
-	const headerLen = 8;
-	const payload = Buffer.alloc(DEFAULT_PAYLOAD_SIZE, 0x61); // 'a'
-	const buf = Buffer.alloc(headerLen + payload.length);
+	const type = isIPv6 ? 128 : 8; // Echo Request types
+	const buf = Buffer.alloc(8 + DEFAULT_PAYLOAD_SIZE, 0x61);
 	buf.writeUInt8(type, 0);
-	buf.writeUInt8(code, 1);
+	buf.writeUInt8(0, 1); // code
 	buf.writeUInt16BE(0, 2); // checksum placeholder
 	buf.writeUInt16BE(identifier & 0xffff, 4);
 	buf.writeUInt16BE(seq & 0xffff, 6);
-	payload.copy(buf, 8);
-	const csum = checksum(buf);
-	buf.writeUInt16BE(csum, 2);
+	buf.writeUInt16BE(checksum(buf), 2);
 	return buf;
 }
 
-function parseIcmpv4(packet) {
-	// packet contém IP header + ICMP
-	if (packet.length < 28) return null; // IP (20) + ICMP (8)
+function parseIcmpPacket(isIPv6, packet) {
+	if (isIPv6) { // Assumindo payload direto ICMPv6
+		if (packet.length < 8) return null;
+		return { type: packet[0], code: packet[1] };
+	}
+	if (packet.length < 28) return null; // IPv4 header + ICMP
 	const ihl = (packet[0] & 0x0f) * 4;
 	if (packet.length < ihl + 8) return null;
-	const type = packet[ihl];
-	const code = packet[ihl + 1];
-	const icmpOffset = ihl;
-	return { type, code, icmpOffset };
+	return { type: packet[ihl], code: packet[ihl + 1] };
 }
 
-function parseIcmpv6(packet) {
-	// raw-socket (IPv6) normalmente entrega só o payload (sem IPv6 header) ou depende da plataforma.
-	// Assumimos que recebemos ICMPv6 direto.
-	if (packet.length < 8) return null;
-	const type = packet[0];
-	const code = packet[1];
-	return { type, code, icmpOffset: 0 };
-}
-
+// --------------------------------------------------
+// Execução do traceroute via raw-socket
+// --------------------------------------------------
 async function rawTraceroute(targetIP, maxHops) {
 	const isIPv6 = net.isIPv6(targetIP);
 	const hops = [];
@@ -66,7 +57,7 @@ async function rawTraceroute(targetIP, maxHops) {
 	const family = isIPv6 ? raw.AddressFamily.IPv6 : raw.AddressFamily.IPv4;
 	const protocol = isIPv6 ? raw.Protocol.ICMPv6 : raw.Protocol.ICMP;
 	const identifier = Math.floor(Math.random() * 0xffff);
-	debugLog('Iniciando raw traceroute', { targetIP, maxHops, isIPv6 });
+	debugLog('Iniciando', { targetIP, maxHops, isIPv6 });
 
 	for (let ttl = 1; ttl <= maxHops; ttl++) {
 		const startHop = Date.now();
@@ -74,78 +65,39 @@ async function rawTraceroute(targetIP, maxHops) {
 		let socket;
 		try {
 			socket = raw.createSocket({ addressFamily: family, protocol });
-			// Ajustar TTL / Hop Limit
 			try {
-				if (isIPv6) {
-					socket.setOption(raw.SocketLevel.IPPROTO_IPV6, raw.SocketOption.IPV6_UNICAST_HOPS, ttl);
-				} else {
-					socket.setOption(raw.SocketLevel.IPPROTO_IP, raw.SocketOption.IP_TTL, ttl);
-				}
-			} catch (optErr) {
-				debugLog('Falha setOption TTL/HopLimit', optErr.message);
-			}
+				if (isIPv6) socket.setOption(raw.SocketLevel.IPPROTO_IPV6, raw.SocketOption.IPV6_UNICAST_HOPS, ttl);
+				else socket.setOption(raw.SocketLevel.IPPROTO_IP, raw.SocketOption.IP_TTL, ttl);
+			} catch (optErr) { debugLog('Falha setOption', optErr.message); }
 
 			const echo = buildIcmpEcho(isIPv6, identifier, ttl);
 			const recvPromise = new Promise((resolve) => {
-				const onMessage = (buf, src) => {
+				socket.on('message', (buf, src) => {
+					const parsed = parseIcmpPacket(isIPv6, buf);
+					if (!parsed) return;
 					const rtt = Date.now() - startHop;
-					if (isIPv6) {
-						const parsed = parseIcmpv6(buf);
-						if (!parsed) return; // ignorar
-						if (parsed.type === 129) { // Echo Reply
-							hopInfo = { hop: ttl, ip: src, hostname: src, responseTime: rtt, status: 'reached' };
-							reachedDestination = true;
-							resolve();
-							return;
-						}
-						if (parsed.type === 3) { // Time Exceeded
-							hopInfo = { hop: ttl, ip: src, hostname: src, responseTime: rtt, status: 'intermediate' };
-							resolve();
-							return;
-						}
-					} else {
-						const parsed = parseIcmpv4(buf);
-						if (!parsed) return;
-						if (parsed.type === 0) { // Echo Reply
-							hopInfo = { hop: ttl, ip: src, hostname: src, responseTime: rtt, status: 'reached' };
-							reachedDestination = true;
-							resolve();
-							return;
-						}
-						if (parsed.type === 11) { // Time Exceeded
-							hopInfo = { hop: ttl, ip: src, hostname: src, responseTime: rtt, status: 'intermediate' };
-							resolve();
-							return;
-						}
-					}
-				};
-				socket.on('message', onMessage);
-				socket.on('error', (e) => { debugLog('Socket erro hop', ttl, e.message); });
-				// Timeout
+						// IPv6: Echo Reply(129), Time Exceeded(3); IPv4: Echo Reply(0), Time Exceeded(11)
+					const isReply = (isIPv6 && parsed.type === 129) || (!isIPv6 && parsed.type === 0);
+					const isTime = (isIPv6 && parsed.type === 3) || (!isIPv6 && parsed.type === 11);
+					if (!isReply && !isTime) return; // ignorar outros tipos
+					hopInfo = { hop: ttl, ip: src, hostname: src, responseTime: rtt, status: isReply ? 'reached' : 'intermediate' };
+					if (isReply) reachedDestination = true;
+					resolve();
+				});
+				socket.on('error', e => debugLog('Socket erro hop', ttl, e.message));
 				setTimeout(() => resolve(), RAW_TIMEOUT_PER_HOP);
 			});
-
-			socket.send(echo, 0, echo.length, targetIP, (err) => {
-				if (err) debugLog('Erro send hop', ttl, err.message);
-			});
+			socket.send(echo, 0, echo.length, targetIP, (err) => err && debugLog('Erro send', ttl, err.message));
 			await recvPromise;
 		} catch (err) {
-			debugLog('Erro geral hop', ttl, err.message);
+			debugLog('Erro hop', ttl, err.message);
 			hopInfo.status = 'error';
 			hopInfo.error = err.message;
-		} finally {
-			try { socket && socket.close(); } catch (_) {}
-		}
+		} finally { try { socket && socket.close(); } catch { /* noop */ } }
 
-		if (hopInfo.status === 'timeout') {
-			consecutiveTimeouts++;
-		} else {
-			consecutiveTimeouts = 0;
-		}
+		if (hopInfo.status === 'timeout') consecutiveTimeouts++; else consecutiveTimeouts = 0;
 		hops.push(hopInfo);
-
-		if (reachedDestination) break;
-		if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) break;
+		if (reachedDestination || consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) break;
 	}
 
 	return {
@@ -153,12 +105,56 @@ async function rawTraceroute(targetIP, maxHops) {
 		reachedDestination,
 		totalHops: hops.length,
 		timeouts: hops.filter(h => h.status === 'timeout').length,
+		// Heurística: se vários timeouts no final após pelo menos 1 hop responsivo
+		suspectedDestination: (() => {
+			if (reachedDestination) return null;
+			const MIN_TRAILING_TIMEOUTS = 5; // configurável futuramente
+			let lastResponsiveIdx = -1;
+			for (let i = hops.length - 1; i >= 0; i--) {
+				if (hops[i].status !== 'timeout') { lastResponsiveIdx = i; break; }
+			}
+			if (lastResponsiveIdx === -1) return null; // nenhum hop respondeu
+			const trailing = hops.length - 1 - lastResponsiveIdx;
+			if (trailing < MIN_TRAILING_TIMEOUTS) return null;
+			const hop = hops[lastResponsiveIdx];
+			if (hop.status === 'reached') return null; // já seria destino
+			const suspected = {
+				hop: hop.hop,
+				ip: hop.ip,
+				hostname: hop.hostname,
+				trailingTimeouts: trailing,
+				reason: 'consecutive_timeouts_after_last_response'
+			};
+			debugLog('suspectedDestination heurística', suspected);
+			return suspected;
+		})(),
 		method: 'raw-socket-icmp'
 	};
 }
 
-const trim = (s) => (typeof s === 'string' ? s.trim() : '');
+// --------------------------------------------------
+// Resolução de target (hostname/IP) mantendo mesma lógica de fallback
+// --------------------------------------------------
+async function resolveTarget(attrIP) {
+	if (net.isIP(attrIP)) {
+		return { targetIP: attrIP, resolvedIPs: null, ipVersion: net.isIPv6(attrIP) ? 6 : 4 };
+	}
+	try {
+		try { // tentar IPv4 primeiro
+			const ipv4s = await dns.resolve4(attrIP);
+			return { targetIP: ipv4s[0], resolvedIPs: ipv4s, ipVersion: 4 };
+		} catch (v4err) {
+			const ipv6s = await dns.resolve6(attrIP); // fallback IPv6
+			return { targetIP: ipv6s[0], resolvedIPs: ipv6s, ipVersion: 6 };
+		}
+	} catch (e) {
+		return { err: 'host not found' };
+	}
+}
 
+// --------------------------------------------------
+// Módulo Fastify exportado
+// --------------------------------------------------
 export const tracerouteModule = {
 	route: '/traceroute/:id/:maxhops?',
 	method: 'get',
@@ -166,114 +162,52 @@ export const tracerouteModule = {
 	handler: async (request, reply) => {
 		const startTime = Date.now();
 		try {
-			debugLog('Start handler target=', request.params.id);
-			let attrIP = request.params.id.toString();
+			const attrIP = request.params.id.toString();
 			const maxHops = request.params.maxhops ? parseInt(trim(request.params.maxhops)) : 30;
 			const sessionID = request.query.sessionID;
 			debugLog('Params', { attrIP, maxHops, sessionID });
-			
-			// Validar maxHops
+
 			if (maxHops < 1 || maxHops > 64) {
-				debugLog('MaxHops inválido', maxHops);
-				return {
-					"timestamp": Date.now(),
-					"target": attrIP,
-					"err": "invalid max hops (1-64)",
-					"sessionID": sessionID,
-					"responseTimeMs": Date.now() - startTime
-				};
+				return { timestamp: Date.now(), target: attrIP, err: 'invalid max hops (1-64)', sessionID, responseTimeMs: Date.now() - startTime };
 			}
 
-			debugLog('Resolvendo DNS (se necessário)');
+			// Atualiza sID global preservando faixa
+			global.sID = (global.sID >= 65535) ? 0 : (global.sID + 1 || 0);
+			const sID = global.sID;
 
-			let sID = (global.sID >= 65535) ? 0 : global.sID + 1;
-			global.sID = sID;
+			const { targetIP, resolvedIPs, ipVersion, err } = await resolveTarget(attrIP);
+			if (err) {
+				return { timestamp: Date.now(), target: attrIP, err, sessionID, ipVersion: 0, responseTimeMs: Date.now() - startTime };
+			}
 
-			// Resolver DNS se necessário para IPv4 e IPv6
-			let targetIP = attrIP;
-			let resolvedIPs = null;
-			let ipVersion = 0;
-			
-		if (!net.isIP(attrIP)) {
-			debugLog('Hostname detectado', attrIP);
+			debugLog('Executando rawTraceroute', { targetIP, ipVersion });
+			let finalResult;
 			try {
-				// Tentar resolver IPv4 primeiro
-				try {
-					debugLog('Tentando IPv4');
-					const ipv4s = await dns.resolve4(attrIP);
-					debugLog('IPv4 ok', ipv4s);
-					resolvedIPs = ipv4s;
-					targetIP = ipv4s[0]; // Usar primeiro IP para traceroute
-					ipVersion = 4;
-				} catch (ipv4Error) {
-					debugLog('IPv4 falhou', ipv4Error.message, 'fallback IPv6');
-					// Se IPv4 falhar, tentar IPv6 sempre
-					const ipv6s = await dns.resolve6(attrIP);
-					debugLog('IPv6 ok', ipv6s);
-					resolvedIPs = ipv6s;
-					targetIP = ipv6s[0];
-					ipVersion = 6;
-				}
-			} catch (err) {
-				debugLog('Falha DNS', err.message);
-				return {
-					"timestamp": Date.now(),
-					"target": attrIP,
-					"err": 'host not found',
-					"sessionID": sessionID,
-					"ipVersion": 0,
-					"responseTimeMs": Date.now() - startTime
-				};
+				finalResult = await rawTraceroute(targetIP, maxHops);
+			} catch (rtErr) {
+				return { timestamp: Date.now(), target: attrIP, err: 'raw traceroute failed: ' + rtErr.message, ipVersion, responseTimeMs: Date.now() - startTime };
 			}
-		} else {
-			debugLog('IP direto', attrIP);
-			const is6 = net.isIPv6(attrIP);
-			ipVersion = is6 ? 6 : 4;
-			debugLog('ipVersion', ipVersion);
-		}
-		
-		debugLog('Executando rawTraceroute', { targetIP, ipVersion });
-		let finalResult;
-		try {
-			finalResult = await rawTraceroute(targetIP, maxHops);
-		} catch (rtErr) {
+
 			return {
-				"timestamp": Date.now(),
-				"target": attrIP,
-				"err": 'raw traceroute failed: ' + rtErr.message,
-				"ipVersion": ipVersion,
-				"responseTimeMs": Date.now() - startTime
+				timestamp: Date.now(),
+				target: attrIP,
+				targetIP,
+				resolvedIPs,
+				maxHops,
+				totalHops: finalResult.totalHops,
+				reachedDestination: finalResult.reachedDestination,
+				timeouts: finalResult.timeouts,
+				hops: finalResult.hops,
+				suspectedDestination: finalResult.suspectedDestination,
+				method: finalResult.method,
+				sessionID,
+				sID,
+				ipVersion,
+				responseTimeMs: Date.now() - startTime
 			};
-		}
-
-		return {
-				"timestamp": Date.now(),
-				"target": attrIP,
-				"targetIP": targetIP,
-				"resolvedIPs": resolvedIPs,
-				"maxHops": maxHops,
-				"totalHops": finalResult.totalHops,
-				"reachedDestination": finalResult.reachedDestination,
-				"timeouts": finalResult.timeouts,
-				"hops": finalResult.hops,
-				"method": finalResult.method,
-				"sessionID": sessionID,
-				"sID": sID,
-				"ipVersion": ipVersion,
-				"responseTimeMs": Date.now() - startTime
-			};
-
 		} catch (error) {
-			console.log('[TRACEROUTE DEBUG] ERRO CRÍTICO:', error.message);
-			console.log('[TRACEROUTE DEBUG] Stack trace:', error.stack);
-			return {
-				"timestamp": Date.now(),
-				"target": request.params.id,
-				"err": error.message,
-				"sessionID": request.query.sessionID,
-				"sID": global.sID,
-				"responseTimeMs": Date.now() - startTime
-			};
+			debugLog('ERRO CRÍTICO', error.message, error.stack);
+			return { timestamp: Date.now(), target: request.params.id, err: error.message, sessionID: request.query.sessionID, sID: global.sID, responseTimeMs: Date.now() - startTime };
 		}
 	}
 };
