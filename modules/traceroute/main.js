@@ -4,7 +4,8 @@ import netPing from 'net-ping';
 import { optionalAuthMiddleware } from '../../auth.js';
 
 // Configuração específica do módulo TRACEROUTE
-const TRACEROUTE_TIMEOUT = 1000; // 1 segundo por hop para traceroute
+const TRACEROUTE_TIMEOUT = 500; // Reduzido para 500ms por hop
+const MAX_CONSECUTIVE_TIMEOUTS = 5; // Parar após 5 timeouts consecutivos
 
 // Função auxiliar trim
 const trim = (s) => {
@@ -18,17 +19,17 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 	const hops = [];
 	let reachedDestination = false;
 	let timeouts = 0;
+	let consecutiveTimeouts = 0; // Contador para timeouts consecutivos
 	const isIPv6 = net.isIPv6(targetIP);
 	console.log('[TRACEROUTE DEBUG] É IPv6:', isIPv6);
 	
 	for (let ttl = 1; ttl <= maxHops; ttl++) {
 		console.log('[TRACEROUTE DEBUG] Hop', ttl, 'de', maxHops);
 		try {
-			// Fazer múltiplas tentativas por hop para melhor precisão
+			// Fazer apenas 1 tentativa por hop para ser mais rápido
 			const attempts = [];
 			
-			for (let attempt = 0; attempt < 2; attempt++) {
-				console.log('[TRACEROUTE DEBUG] Tentativa', attempt + 1, 'para hop', ttl);
+			for (let attempt = 0; attempt < 1; attempt++) {
 				const sessionOptions = {
 					timeout: timeout,
 					retries: 0,
@@ -36,19 +37,15 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 				};
 				try {
 					if (isIPv6 && netPing.NetworkProtocol?.IPv6) {
-						console.log('[TRACEROUTE DEBUG] Configurando protocolo IPv6');
 						sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv6;
 					} else if (!isIPv6 && netPing.NetworkProtocol?.IPv4) {
-						console.log('[TRACEROUTE DEBUG] Configurando protocolo IPv4');
 						sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv4;
 					}
 				} catch (protocolError) { 
 					console.log('[TRACEROUTE DEBUG] Erro ao configurar protocolo:', protocolError.message);
 				}
 				
-				console.log('[TRACEROUTE DEBUG] Criando sessão com opções:', sessionOptions);
 				const session = netPing.createSession(sessionOptions);
-				console.log('[TRACEROUTE DEBUG] Sessão criada, iniciando ping para:', targetIP);
 
 				const hopResult = await new Promise((resolve) => {
 					const startTime = Date.now();
@@ -110,6 +107,7 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 					status: 'reached'
 				};
 				reachedDestination = true;
+				consecutiveTimeouts = 0; // Reset contador
 			} else if (bestAttempt.ip) {
 				finalResult = {
 					hop: ttl,
@@ -118,6 +116,7 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 					responseTime: bestAttempt.responseTime,
 					status: 'reply'
 				};
+				consecutiveTimeouts = 0; // Reset contador
 			} else if (bestAttempt.type === 'timeout') {
 				finalResult = {
 					hop: ttl,
@@ -127,6 +126,7 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 					status: 'timeout'
 				};
 				timeouts++;
+				consecutiveTimeouts++;
 			} else {
 				finalResult = {
 					hop: ttl,
@@ -135,16 +135,25 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 					responseTime: null,
 					status: 'no_reply'
 				};
+				consecutiveTimeouts++; // Também conta como timeout consecutivo
 			}
 
 			hops.push(finalResult);
 			
 			// Se chegamos ao destino, parar
 			if (reachedDestination) {
+				console.log('[TRACEROUTE DEBUG] Destino alcançado, parando');
+				break;
+			}
+			
+			// Se muitos timeouts consecutivos, parar para economizar tempo
+			if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+				console.log('[TRACEROUTE DEBUG] Muitos timeouts consecutivos (', consecutiveTimeouts, '), parando traceroute');
 				break;
 			}
 			
 		} catch (sessionError) {
+			console.log('[TRACEROUTE DEBUG] Erro na sessão:', sessionError.message);
 			hops.push({
 				hop: ttl,
 				ip: null,
@@ -153,10 +162,17 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 				status: 'error',
 				error: sessionError.message
 			});
+			consecutiveTimeouts++; // Erro também conta como timeout consecutivo
 		}
 		
-		// Delay entre hops (reduzido para melhor performance)
-		await new Promise(resolve => setTimeout(resolve, 5));
+		// Se muitos timeouts consecutivos, parar para economizar tempo
+		if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+			console.log('[TRACEROUTE DEBUG] Muitos timeouts consecutivos após erro, parando traceroute');
+			break;
+		}
+		
+		// Delay entre hops removido para ser mais rápido
+		// await new Promise(resolve => setTimeout(resolve, 5));
 	}
 	
 	return {
