@@ -67,7 +67,9 @@ export const ping = {
 	handler: async (request, reply) => {
 		const startTime = Date.now();
 		try {
-			const attrTTL = request.params.ttl ? parseInt(trim(request.params.ttl)) : 128;
+			let attrTTL = request.params.ttl ? parseInt(trim(request.params.ttl)) : 128;
+			if (isNaN(attrTTL)) attrTTL = 128;
+			if (attrTTL < 1) attrTTL = 1; else if (attrTTL > 255) attrTTL = 255;
 			let attrIP = request.params.id.toString();
 			const sessionID = request.query.sessionID;
 			
@@ -200,7 +202,9 @@ export const ping = {
 						// Ajusta TTL
 						try {
 							socket.setOption(raw.SocketLevel.IPPROTO_IP, raw.SocketOption.IP_TTL, ttl);
-						} catch (eTTL) { /* ignora falha em setar TTL */ }
+						} catch (eTTL1) {
+							try { socket.setOption(raw.SocketLevel.IPPROTO_IP, raw.SocketOption.IP_TTL, Buffer.from([ttl])); } catch (eTTL2) { /* ignora */ }
+						}
 
 						// Constrói pacote ICMP Echo Request
 						const payload = Buffer.from('ISPTOOLS');
@@ -240,6 +244,13 @@ export const ping = {
 								const rtt = Date.now() - startedAt;
 								try { socket.close(); } catch (_) { }
 								return resolve({ alive: true, time: rtt });
+							}
+							// Time Exceeded (TTL expirado) type 11
+							if (type === 11) {
+								finished = true;
+								const rtt = Date.now() - startedAt;
+								try { socket.close(); } catch (_) { }
+								return resolve({ alive: false, time: rtt, error: 'ttlExpired', hopIP: source });
 							}
 						});
 
@@ -288,7 +299,7 @@ export const ping = {
 					};
 					try {
 						socket = raw.createSocket({ protocol: raw.Protocol.ICMPv6 });
-						try { socket.setOption(raw.SocketLevel.IPPROTO_IPV6, raw.SocketOption.IPV6_UNICAST_HOPS, hopLimit); } catch (_) { }
+						try { socket.setOption(raw.SocketLevel.IPPROTO_IPV6, raw.SocketOption.IPV6_UNICAST_HOPS, hopLimit); } catch (eH1) { try { socket.setOption(raw.SocketLevel.IPPROTO_IPV6, raw.SocketOption.IPV6_UNICAST_HOPS, Buffer.from([hopLimit])); } catch (eH2) { /* ignore */ } }
 						// Monta Echo Request (Tipo 128, Code 0)
 						const payload = Buffer.from('ISPTOOLS');
 						const icmp = Buffer.alloc(8 + payload.length);
@@ -328,6 +339,13 @@ export const ping = {
 									return resolve({ alive: true, time: rtt });
 								}
 							}
+							// ICMPv6 Time Exceeded type 3
+							if (type === 3) {
+								finished = true;
+								const rtt = Date.now() - startedAt;
+								try { socket.close(); } catch (_) { }
+								return resolve({ alive: false, time: rtt, error: 'ttlExpired', hopIP: source });
+							}
 						});
 
 						socket.on('error', (err) => {
@@ -357,6 +375,7 @@ export const ping = {
 				"ms": result.alive ? Math.round(result.time) : null,
 				"ttl": attrTTL,
 				"err": result.alive ? null : (result.error || 'timeout'),
+				"hopIP": result.hopIP || null,
 				"sessionID": sessionID,
 				"sID": sID,
 				"ipVersion": ipVersion,
