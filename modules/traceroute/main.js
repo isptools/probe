@@ -14,17 +14,21 @@ const trim = (s) => {
 
 // Função para fazer traceroute usando net-ping
 async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TIMEOUT) {
+	console.log('[TRACEROUTE DEBUG] performTraceroute iniciado - IP:', targetIP, 'maxHops:', maxHops, 'timeout:', timeout);
 	const hops = [];
 	let reachedDestination = false;
 	let timeouts = 0;
 	const isIPv6 = net.isIPv6(targetIP);
+	console.log('[TRACEROUTE DEBUG] É IPv6:', isIPv6);
 	
 	for (let ttl = 1; ttl <= maxHops; ttl++) {
+		console.log('[TRACEROUTE DEBUG] Hop', ttl, 'de', maxHops);
 		try {
 			// Fazer múltiplas tentativas por hop para melhor precisão
 			const attempts = [];
 			
 			for (let attempt = 0; attempt < 2; attempt++) {
+				console.log('[TRACEROUTE DEBUG] Tentativa', attempt + 1, 'para hop', ttl);
 				const sessionOptions = {
 					timeout: timeout,
 					retries: 0,
@@ -32,12 +36,19 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 				};
 				try {
 					if (isIPv6 && netPing.NetworkProtocol?.IPv6) {
+						console.log('[TRACEROUTE DEBUG] Configurando protocolo IPv6');
 						sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv6;
 					} else if (!isIPv6 && netPing.NetworkProtocol?.IPv4) {
+						console.log('[TRACEROUTE DEBUG] Configurando protocolo IPv4');
 						sessionOptions.networkProtocol = netPing.NetworkProtocol.IPv4;
 					}
-				} catch (_) { /* ignore */ }
+				} catch (protocolError) { 
+					console.log('[TRACEROUTE DEBUG] Erro ao configurar protocolo:', protocolError.message);
+				}
+				
+				console.log('[TRACEROUTE DEBUG] Criando sessão com opções:', sessionOptions);
 				const session = netPing.createSession(sessionOptions);
+				console.log('[TRACEROUTE DEBUG] Sessão criada, iniciando ping para:', targetIP);
 
 				const hopResult = await new Promise((resolve) => {
 					const startTime = Date.now();
@@ -163,12 +174,15 @@ export const tracerouteModule = {
 	handler: async (request, reply) => {
 		const startTime = Date.now();
 		try {
+			console.log('[TRACEROUTE DEBUG] Iniciando traceroute para:', request.params.id);
 			let attrIP = request.params.id.toString();
 			const maxHops = request.params.maxhops ? parseInt(trim(request.params.maxhops)) : 30;
 			const sessionID = request.query.sessionID;
+			console.log('[TRACEROUTE DEBUG] Parâmetros:', { attrIP, maxHops, sessionID });
 			
 			// Validar maxHops
 			if (maxHops < 1 || maxHops > 64) {
+				console.log('[TRACEROUTE DEBUG] MaxHops inválido:', maxHops);
 				return {
 					"timestamp": Date.now(),
 					"target": attrIP,
@@ -177,6 +191,8 @@ export const tracerouteModule = {
 					"responseTimeMs": Date.now() - startTime
 				};
 			}
+
+			console.log('[TRACEROUTE DEBUG] Iniciando resolução DNS...');
 
 			let sID = (global.sID >= 65535) ? 0 : global.sID + 1;
 			global.sID = sID;
@@ -187,21 +203,27 @@ export const tracerouteModule = {
 			let ipVersion = 0;
 			
 		if (!net.isIP(attrIP)) {
+			console.log('[TRACEROUTE DEBUG] Resolvendo hostname:', attrIP);
 			try {
 				// Tentar resolver IPv4 primeiro
 				try {
+					console.log('[TRACEROUTE DEBUG] Tentando IPv4...');
 					const ipv4s = await dns.resolve4(attrIP);
+					console.log('[TRACEROUTE DEBUG] IPv4 resolvido:', ipv4s);
 					resolvedIPs = ipv4s;
 					targetIP = ipv4s[0]; // Usar primeiro IP para traceroute
 					ipVersion = 4;
 				} catch (ipv4Error) {
+					console.log('[TRACEROUTE DEBUG] IPv4 falhou:', ipv4Error.message, 'Tentando IPv6...');
 					// Se IPv4 falhar, tentar IPv6 sempre
 					const ipv6s = await dns.resolve6(attrIP);
+					console.log('[TRACEROUTE DEBUG] IPv6 resolvido:', ipv6s);
 					resolvedIPs = ipv6s;
 					targetIP = ipv6s[0];
 					ipVersion = 6;
 				}
 			} catch (err) {
+				console.log('[TRACEROUTE DEBUG] Erro na resolução DNS:', err.message);
 				return {
 					"timestamp": Date.now(),
 					"target": attrIP,
@@ -212,12 +234,19 @@ export const tracerouteModule = {
 				};
 			}
 		} else {
+			console.log('[TRACEROUTE DEBUG] IP direto fornecido:', attrIP);
 			const is6 = net.isIPv6(attrIP);
 			ipVersion = is6 ? 6 : 4;
-		}			// Executar traceroute
-			const result = await performTraceroute(targetIP, maxHops, TRACEROUTE_TIMEOUT);
+			console.log('[TRACEROUTE DEBUG] Versão IP detectada:', ipVersion);
+		}
+		
+		console.log('[TRACEROUTE DEBUG] Iniciando traceroute para IP:', targetIP, 'versão:', ipVersion);
+		
+		// Executar traceroute
+		const result = await performTraceroute(targetIP, maxHops, TRACEROUTE_TIMEOUT);
+		console.log('[TRACEROUTE DEBUG] Traceroute concluído:', result.totalHops, 'hops');
 
-			return {
+		return {
 				"timestamp": Date.now(),
 				"target": attrIP,
 				"targetIP": targetIP,
@@ -234,6 +263,8 @@ export const tracerouteModule = {
 			};
 
 		} catch (error) {
+			console.log('[TRACEROUTE DEBUG] ERRO CRÍTICO:', error.message);
+			console.log('[TRACEROUTE DEBUG] Stack trace:', error.stack);
 			return {
 				"timestamp": Date.now(),
 				"target": request.params.id,
