@@ -131,20 +131,31 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 						session.close();
 						
 						if (error) {
-							if (error.code === 'RequestTimedOut' || responseTime >= timeout) {
+							debugLog('Erro raw hop:', { code: error.code, message: error.message, source: error.source });
+							// Se a lib retornar source, tratamos como hop intermediário (ICMP Time Exceeded)
+							if (error.source) {
+								resolve({
+									success: false,
+									type: 'intermediate',
+									responseTime: responseTime,
+									ip: error.source,
+									rawError: error.code || 'ICMP'
+								});
+							} else if (error.code === 'RequestTimedOut' || responseTime >= timeout) {
 								resolve({
 									success: false,
 									type: 'timeout',
 									responseTime: null,
-									ip: null
+									ip: null,
+									rawError: error.code || null
 								});
 							} else {
-								// Outros erros podem indicar TTL exceeded de hop intermediário
 								resolve({
 									success: false,
 									type: 'no_reply',
 									responseTime: null,
-									ip: error.source || null
+									ip: null,
+									rawError: error.code || null
 								});
 							}
 						} else {
@@ -184,6 +195,15 @@ async function performTraceroute(targetIP, maxHops = 30, timeout = TRACEROUTE_TI
 				};
 				reachedDestination = true;
 				consecutiveTimeouts = 0; // Reset contador
+			} else if (bestAttempt.type === 'intermediate' && bestAttempt.ip) {
+				finalResult = {
+					hop: ttl,
+					ip: bestAttempt.ip,
+					hostname: bestAttempt.ip,
+					responseTime: bestAttempt.responseTime,
+					status: 'intermediate'
+				};
+				consecutiveTimeouts = 0;
 			} else if (bestAttempt.ip) {
 				finalResult = {
 					hop: ttl,
