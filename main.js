@@ -1,6 +1,5 @@
 // Configurações globais
 global.version = "2.1.5";
-global.updated = true;
 global.sID = process.pid; // ID único baseado no PID (mais simples)
 global.showRequestLogs = process.env.SHOW_REQUEST_LOGS === 'true';
 global.ipv4Support = false;
@@ -70,7 +69,6 @@ fastify.get('/', async (request, reply) => {
 	
 	const response = {
 		version: global.version,
-		updated: global.updated,
 		auth: false,
 		pid: process.pid,
 		systemID: global.systemID || null,
@@ -136,7 +134,10 @@ const start = async () => {
 		// Registro em background
 		initializeRegistration();
 		
-		showBanner();
+		const instanceId = process.env.NODE_APP_INSTANCE || process.env.PM2_INSTANCE_ID || '0';
+		if (instanceId === '0') {
+			showBanner();
+		}
 		
 	} catch (err) {
 		console.error('❌ Failed to start:', err.message);

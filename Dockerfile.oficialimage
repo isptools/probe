@@ -17,20 +17,13 @@ RUN apk add --no-cache \
 ENV PYTHON=/usr/bin/python3
 
 # clonar repositório
-#RUN git clone https://github.com/isptools/probe.git .
-
-# Copiar arquivos de configuração primeiro para melhor cache de layers
-COPY package*.json ecosystem.config.js ./
-
-# Copiar código fonte
-COPY . .
+RUN git clone https://github.com/isptools/probe.git .
 
 # Atualiza npm e instala pm2
 RUN npm install -g npm@latest pm2
 
 # Instalar dependências npm
 RUN npm ci --omit=dev --no-audit --no-fund
-
 
 EXPOSE 8000
 

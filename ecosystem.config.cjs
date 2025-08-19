@@ -4,6 +4,31 @@ module.exports = {
     script: 'main.js',
     instances: 'max',
     exec_mode: 'cluster',
+
+    watch: true,
+    watch_options: {
+      followSymlinks: false,
+      usePolling: false,
+      interval: 1000
+    },
+    ignore_watch: [
+      'node_modules',
+      'logs',
+      '.git',
+      '.pm2',
+      '.vscode',
+      'test',
+      'test.yml',
+      'build.sh',
+      'Dockerfile*',
+      'README.md',
+      '*.log',
+      '*.pid',
+      'package-lock.json',
+      '.gitignore',
+      '.dockerignore'
+    ],
+
     env: {
       NODE_ENV: 'production',
       PORT: 8000
