@@ -1,14 +1,16 @@
 {
   "name": "probe-isptools",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "description": "ISP Tools Probe - Network diagnostic tools",
   "main": "main.js",
   "type": "module",
   "scripts": {
     "start": "NODE_ENV=production node main.js",
-    "dev": "NODE_ENV=development CLUSTER_ENABLED=false SHOW_REQUEST_LOGS=true nodemon main.js",
-    "test:dns": "node testa_resolucao_dns.js",
-    "test:pingv6": "node diagnose_ping_ipv6.js"
+    "start:pm2": "pm2 start ecosystem.config.cjs --env production",
+    "start:pm2:dev": "pm2 start ecosystem.config.cjs --env development",
+    "stop:pm2": "pm2 stop ecosystem.config.cjs",
+    "restart:pm2": "pm2 restart ecosystem.config.cjs",
+    "dev": "NODE_ENV=development SHOW_REQUEST_LOGS=true nodemon main.js"
   },
   "author": "Giovane Heleno",
   "license": "MIT",
@@ -17,7 +19,7 @@
     "url": "https://github.com/isptools/probe.git"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "axios": "^1.7.2",

@@ -1,8 +1,8 @@
-# ISP Tools Probe v2.1.4
+# ISP Tools Probe v2.1.5
 
 Uma ferramenta de diagnóstico de rede modernizada para Node.js v23.7+, fornecendo APIs para testes de conectividade, DNS e HTTP.
 
-## 🚀 Mudanças da Versão 2.1.0 para 2.1.4
+## 🚀 Mudanças da Versão 2.1.0 para 2.1.5
 
 ### ⚡ Cluster Mode para Alta Performance
 - ✅ **Node.js Cluster**: Implementação completa de cluster para múltiplos workers

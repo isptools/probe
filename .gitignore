@@ -123,7 +123,7 @@ ehthumbs.db
 Thumbs.db
 
 # IDE files
-.vscode/
+#.vscode/
 .idea/
 *.swp
 *.swo
@@ -132,3 +132,5 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+*.sh

@@ -49,13 +49,13 @@ export function discoverModules() {
 /**
  * Carrega módulos rapidamente usando cache de descoberta
  */
-export async function loadModules(fastify, isWorker = false) {
+export async function loadModules(fastify) {
 	try {
 		// Usar cache de descoberta (muito rápido)
 		const availableModules = discoverModules();
 		
 		if (availableModules.length === 0) {
-			if (!isWorker) console.log('📦 No modules found');
+			console.log('📦 No modules found');
 			return [];
 		}
 
@@ -117,11 +117,11 @@ export async function loadModules(fastify, isWorker = false) {
 							hasMiddleware: !!(endpoint.middleware && endpoint.middleware.length > 0)
 						});
 					} catch (regError) {
-						if (!isWorker) console.error(`❌ Error registering endpoint ${exportName} from ${module}:`, regError.message);
+						console.error(`❌ Error registering endpoint ${exportName} from ${module}:`, regError.message);
 					}
 				}
 			} else {
-				if (!isWorker && result.error) {
+				if (result.error) {
 					console.error(`❌ Error loading module ${result.name}:`, result.error);
 				}
 			}
@@ -129,7 +129,7 @@ export async function loadModules(fastify, isWorker = false) {
 
 		return loadedModules;
 	} catch (error) {
-		if (!isWorker) console.error('❌ Error loading modules:', error.message);
+		console.error('❌ Error loading modules:', error.message);
 		return [];
 	}
 }

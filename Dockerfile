@@ -1,27 +1,36 @@
-FROM node:lts-bullseye-slim
+FROM node:20-alpine
 
 LABEL maintainer="Giovane Heleno" \
-      version="2.1.4" \
+      version="2.1.5" \
       description="ISP Tools Probe - Network diagnostic tools"
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
-RUN apt-get update && \
-    apt-get install -y git wget python3 build-essential && \
-    apt-get install -y --no-install-recommends dumb-init && \
-    npm install -g npm@latest pm2 && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    dumb-init \
+    python3 \
+    make \
+    g++ \
+    wget \
+    && npm install -g npm@latest pm2
 
 ENV PYTHON=/usr/bin/python3
 
 # clonar repositório
-RUN git clone https://github.com/isptools/probe.git .
+#RUN git clone https://github.com/isptools/probe.git .
 
-# Instalar dependências primeiro
-RUN npm ci --omit=dev
+# Copiar arquivos de configuração primeiro para melhor cache de layers
+#COPY package*.json ecosystem.config.js ./
+
+# Copiar código fonte
+COPY . .
+
+# Atualiza npm e instala pm2
+RUN npm install -g npm@latest pm2
+
+# Instalar dependências npm
+RUN npm ci --omit=dev --no-audit --no-fund
+
 
 EXPOSE 8000
 
@@ -30,4 +39,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=10 \
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
-CMD ["pm2-runtime", "npm", "--", "start"]
+CMD ["pm2-runtime", "start", "ecosystem.config.cjs", "--env", "production"]
+
