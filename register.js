@@ -119,15 +119,6 @@ async function performGitPull() {
             cwd: process.cwd(),
             timeout: 30000 // 30 segundos
         });
-        
-        console.log('✓ Git pull successful:', stdout.trim());
-        
-        // Verificar se houve atualizações
-        if (stdout.includes('Already up to date')) {
-            return { updated: false, output: stdout.trim() };
-        } else {
-            return { updated: true, output: stdout.trim() };
-        }
     } catch (error) {
         console.error('✗ Git pull failed:', error.message);
         return { updated: false, error: error.message };

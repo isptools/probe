@@ -134,3 +134,4 @@ Thumbs.db
 *.temp
 
 *.sh
+Dockerfile.isptools

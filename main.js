@@ -96,19 +96,16 @@ fastify.get('/health', async () => ({
 
 // Banner simplificado
 const showBanner = () => {
-	console.log('\n🚀 ISP.Tools Probe v' + global.version + ' - PID: ' + process.pid);
-	console.log(`📊 Port: ${global.serverPort} | Memory: ${Math.round(process.memoryUsage().rss/1024/1024)}MB`);
+	console.log('\n\n\n\n🚀 ISP.Tools Probe v' + global.version);
+	console.log(`📊 Port: ${global.serverPort}`);
 	console.log(`🌐 IPv4: ${global.ipv4Support ? '✅' : '❌'} | IPv6: ${global.ipv6Support ? '✅' : '❌'}`);
-	console.log('🔗 Dashboard: www.isp.tools\n');
+	console.log('\n🔗 Dashboard: www.isp.tools\n\n\n\n');
 };
 
 // Inicialização ultra-simplificada
 const start = async () => {
-	try {
-		console.log(`🚀 ISP.Tools Probe v${global.version} - PID: ${process.pid}`);
-		
+	try {		
 		// Detectar suporte de rede ANTES de carregar módulos
-		console.log('🌐 Detecting network support...');
 		await detectNetworkSupport();
 		
 		// Paralelizar inicializações após detecção de rede
@@ -118,7 +115,6 @@ const start = async () => {
 		]);
 		
 		global.loadedModules = loadedModules;
-		console.log(`⚡ Loaded ${loadedModules.length} modules`);
 		
 		// Iniciar servidor
 		await fastify.listen({ port: global.serverPort, host: '0.0.0.0' });
