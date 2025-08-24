@@ -8,29 +8,22 @@ WORKDIR /app
 
 RUN apk add --no-cache \
     dumb-init \
-    python3 \
     make \
     g++ \
     wget \
+    git \
     && npm install -g npm@latest pm2
 
 ENV PYTHON=/usr/bin/python3
 
 # clonar repositório
-#RUN git clone https://github.com/isptools/probe.git .
+RUN git clone https://github.com/isptools/probe.git .
 
-# Copiar arquivos de configuração primeiro para melhor cache de layers
-COPY package*.json ecosystem.config.js ./
-
-# Copiar código fonte
-COPY . .
-
-# Atualiza npm e instala pm2
-RUN npm install -g npm@latest pm2
+# Copiar arquivos
+# COPY . .
 
 # Instalar dependências npm
 RUN npm ci --omit=dev --no-audit --no-fund
-
 
 EXPOSE 8000
 
