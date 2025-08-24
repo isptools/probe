@@ -16,6 +16,99 @@ function injection(x) {
 	return url.format(urlparse);
 }
 
+// Parse certificate and socket info to a richer structure (inspired by v2/modules/ssl/main.js)
+function parseCertificate(cert, socket, hostname) {
+	if (!cert || Object.keys(cert).length === 0) return null;
+
+	const now = new Date();
+	const expiry = cert.valid_to ? new Date(cert.valid_to) : null;
+	const daysUntilExpiry = expiry ? Math.ceil((expiry - now) / (1000 * 60 * 60 * 24)) : null;
+
+	// subjectAltName parsing
+	const sans = [];
+	if (cert.subjectaltname) {
+		const sanList = cert.subjectaltname.split(', ');
+		sanList.forEach(san => {
+			if (san.startsWith('DNS:')) sans.push(san.substring(4));
+		});
+	}
+
+	// hostname validation (simple: CN or SANs with wildcard support)
+	let validForHostname = false;
+	if (cert.subject?.CN === hostname) validForHostname = true;
+	if (!validForHostname && sans.length) {
+		for (const san of sans) {
+			if (san === hostname) { validForHostname = true; break; }
+			if (san.startsWith('*.')) {
+				const wildcardDomain = san.substring(2);
+				if (hostname === wildcardDomain || hostname.endsWith('.' + wildcardDomain)) { validForHostname = true; break; }
+			}
+		}
+	}
+
+	const isSelfSigned = cert.issuer?.CN && cert.subject?.CN && cert.issuer.CN === cert.subject.CN;
+
+	const cipher = socket && socket.getCipher ? socket.getCipher() : null;
+	const protocol = socket && socket.getProtocol ? socket.getProtocol() : null;
+
+	// Helper: convert raw DER Buffer to PEM string
+	function derToPem(raw) {
+		try {
+			if (!raw) return null;
+			const b64 = raw.toString('base64');
+			const lines = b64.match(/.{1,64}/g) || [];
+			return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----\n`;
+		} catch (e) {
+			return null;
+		}
+	}
+
+	// Build PEM chain by walking issuerCertificate if available (Node provides nested issuerCertificate when detailed=true)
+	const pemChain = [];
+	try {
+		let current = cert;
+		const seen = new Set();
+		while (current && current.raw) {
+			const b64 = current.raw.toString('base64');
+			if (seen.has(b64)) break;
+			seen.add(b64);
+			const pem = derToPem(current.raw);
+			if (pem) pemChain.push(pem);
+			// Some Node versions provide `issuerCertificate` pointing to parent; stop when absent or self-referential
+			if (!current.issuerCertificate || current.issuerCertificate === current) break;
+			current = current.issuerCertificate;
+		}
+	} catch (e) {
+		// ignore chain building errors
+	}
+
+	return {
+		subject: cert.subject || null,
+		issuer: cert.issuer || null,
+		serialNumber: cert.serialNumber || null,
+		fingerprint: cert.fingerprint || null,
+		fingerprint256: cert.fingerprint256 || null,
+		validFrom: cert.valid_from || null,
+		validTo: cert.valid_to || null,
+		daysUntilExpiry: daysUntilExpiry,
+		expired: typeof daysUntilExpiry === 'number' ? daysUntilExpiry < 0 : null,
+		expiresSoon: typeof daysUntilExpiry === 'number' ? daysUntilExpiry <= 30 : null,
+		subjectAltNames: sans,
+		validForHostname: validForHostname,
+		isSelfSigned: isSelfSigned,
+		keySize: cert.bits || null,
+		signatureAlgorithm: cert.sigalg || null,
+		protocol: protocol,
+		cipher: cipher ? { name: cipher.name, version: cipher.version } : null,
+		authorized: socket ? !!socket.authorized : null,
+		authorizationError: socket ? socket.authorizationError || null : null
+		,
+		// PEM chain (array of PEM strings) when raw DER is available, and counts
+		pemChain: pemChain.length ? pemChain : null,
+		pemChainCount: pemChain.length
+	};
+}
+
 export const httpModule = {
 	route: '/http/:id',
 	method: 'get',
@@ -82,17 +175,18 @@ export const httpModule = {
 
 			const makeRequest = (targetUrl) => {
 				return new Promise(async (resolve, reject) => {
+					const makeStart = Date.now();
 					const currentParsedUrl = url.parse(targetUrl);
 					const isHttps = currentParsedUrl.protocol === 'https:';
 					const client = isHttps ? https : http;
-					
-					// Re-resolver DNS para a URL atual se necessário
+
+					// Re-resolver DNS para a URL atual se necessário (medindo tempo)
 					let currentIpVersion = ipVersion;
 					let currentResolvedIPs = resolvedIPs;
-					
+					let dnsMs = null;
 					if (currentParsedUrl.hostname && !net.isIP(currentParsedUrl.hostname)) {
+						const dnsStart = Date.now();
 						try {
-							// Tentar resolver IPv4 primeiro
 							try {
 								const ipv4s = await dns.resolve4(currentParsedUrl.hostname);
 								currentResolvedIPs = ipv4s;
@@ -102,6 +196,7 @@ export const httpModule = {
 								currentResolvedIPs = ipv6s;
 								currentIpVersion = 6;
 							}
+							dnsMs = Date.now() - dnsStart;
 						} catch (dnsError) {
 							reject({
 								"timestamp": Date.now(),
@@ -115,12 +210,10 @@ export const httpModule = {
 					} else if (net.isIP(currentParsedUrl.hostname)) {
 						currentIpVersion = net.isIPv6(currentParsedUrl.hostname) ? 6 : 4;
 					}
-					
+
 					const options = {
 						timeout: HTTP_TIMEOUT,
-						// Para IPv6, precisamos ajustar a family
 						family: currentIpVersion === 6 ? 6 : (currentIpVersion === 4 ? 4 : 0),
-						// Para HTTPS, ignorar erros de certificado
 						...(isHttps && {
 							rejectUnauthorized: false,
 							requestCert: true,
@@ -128,37 +221,76 @@ export const httpModule = {
 						})
 					};
 
+					let tcpConnectMs = null;
+					let tlsHandshakeMs = null;
+					let firstByteMs = null;
+
 					const request = client.get(targetUrl, options, (response) => {
+						const responseTime = Date.now() - makeStart;
+
+						// Medir time-to-first-byte se possível
+						response.once('data', () => {
+							if (!firstByteMs) firstByteMs = Date.now() - makeStart;
+						});
+
+						// Capturar detalhes do certificado SSL/TLS e socket info
 						let certificate = null;
-						
-						// Capturar detalhes do certificado SSL/TLS
+						let socketInfo = null;
 						if (isHttps && response.socket && response.socket.getPeerCertificate) {
-							const cert = response.socket.getPeerCertificate(true);
-							if (cert && Object.keys(cert).length > 0) {
-								certificate = {
-									subject: cert.subject,
-									issuer: cert.issuer,
-									valid_from: cert.valid_from,
-									valid_to: cert.valid_to,
-									fingerprint: cert.fingerprint,
-									fingerprint256: cert.fingerprint256,
-									serialNumber: cert.serialNumber,
-									version: cert.version
+							try {
+								const cert = response.socket.getPeerCertificate(true);
+								certificate = parseCertificate(cert, response.socket, currentParsedUrl.hostname || parsedUrl.hostname);
+								// add raw cert fields for backward compat
+								if (cert && Object.keys(cert).length > 0) {
+									certificate.raw = { serialNumber: cert.serialNumber };
+								}
+								socketInfo = {
+									protocol: response.socket.getProtocol ? response.socket.getProtocol() : null,
+									cipher: response.socket.getCipher ? response.socket.getCipher() : null,
+									authorized: !!response.socket.authorized,
+									authorizationError: response.socket.authorizationError || null
 								};
+							} catch (e) {
+								// ignore certificate parsing failures
 							}
 						}
 
 						resolve({
 							"timestamp": Date.now(),
 							"url": url.parse(attrIPoriginal),
+							"targetUrl": targetUrl,
 							"resolvedIPs": currentResolvedIPs,
 							"status": response.statusCode,
 							"headers": response.headers,
 							"certificate": certificate,
+							"socket": socketInfo,
+							"timing": {
+								dnsMs: dnsMs,
+								tcpConnectMs: tcpConnectMs,
+								tlsHandshakeMs: tlsHandshakeMs,
+								firstByteMs: firstByteMs,
+								responseMs: responseTime
+							},
 							"err": null,
 							"ipVersion": currentIpVersion,
 							"responseTimeMs": Date.now() - startTime
 						});
+					});
+
+					// instrument socket events for timing
+					request.on('socket', (socket) => {
+						if (!socket) return;
+						socket.on('lookup', (err, address, family, host) => {
+							if (!dnsMs) dnsMs = Date.now() - makeStart;
+						});
+						socket.on('connect', () => {
+							tcpConnectMs = Date.now() - makeStart;
+						});
+						if (socket.on) {
+							socket.on('secureConnect', () => {
+								tlsHandshakeMs = Date.now() - makeStart;
+							});
+						}
 					});
 
 					request.on('error', (error) => {
