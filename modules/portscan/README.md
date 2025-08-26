@@ -4,18 +4,39 @@
 
 O módulo **portscan** fornece funcionalidades de varredura de portas TCP e UDP para diagnóstico de rede. Ele permite verificar se portas específicas estão abertas, fechadas ou filtradas em hosts remotos, incluindo análise de segurança e identificação de serviços.
 
-## Endpoint
+## Endpoints
 
+### GET (Compatibilidade)
 ```
 GET /portscan/:protocol/:method/:id/:ports?
 ```
 
-### Parâmetros da URL
+### POST (Listas Grandes - Recomendado para CUSTOM)
+```
+POST /portscan
+Content-Type: application/json
+
+{
+  "protocol": "tcp|udp",
+  "method": "SINGLE|COMMON|RANGE|CUSTOM",
+  "host": "hostname ou IP",
+  "ports": "string ou array de portas"
+}
+```
+
+### Parâmetros da URL (GET)
 
 - **protocol** (obrigatório): `tcp` ou `udp`
 - **method** (obrigatório): `SINGLE`, `COMMON`, `RANGE`, ou `CUSTOM`
 - **id** (obrigatório): Hostname ou endereço IP do alvo
 - **ports** (opcional/condicional): Especificação das portas conforme o método
+
+### Parâmetros do Body (POST)
+
+- **protocol** (obrigatório): `tcp` ou `udp`
+- **method** (obrigatório): `SINGLE`, `COMMON`, `RANGE`, ou `CUSTOM`
+- **host** (obrigatório): Hostname ou endereço IP do alvo
+- **ports** (opcional/condicional): String separada por vírgulas ou array de números
 
 ### Middleware
 
@@ -47,12 +68,37 @@ GET /portscan/:protocol/:method/:id/:ports?
 - Máximo de 100 portas por range
 
 ### 4. CUSTOM - Lista Personalizada
+
+#### GET (Limitado)
 ```
 /portscan/tcp/CUSTOM/example.com/22,80,443,8080
 /portscan/udp/CUSTOM/dns.server.com/53,123,161
 ```
-- Máximo de 100 portas por lista
+- Máximo de ~30-40 portas (limitado por URL de 256 caracteres)
 - Separadas por vírgula
+
+#### POST (Recomendado para Listas Grandes)
+```javascript
+// Usando string separada por vírgulas
+POST /portscan
+{
+  "protocol": "tcp",
+  "method": "CUSTOM", 
+  "host": "example.com",
+  "ports": "22,80,443,8080,8443,9000,9001,9002..."
+}
+
+// Usando array de números (mais limpo)
+POST /portscan
+{
+  "protocol": "udp",
+  "method": "CUSTOM",
+  "host": "target.local", 
+  "ports": [53, 123, 161, 500, 1812, 1813, 4500, 5060]
+}
+```
+- Máximo de 500 portas por lista (aumentado do limite anterior de 100)
+- Sem limitação de URL - suporta listas muito grandes
 
 ## Respostas
 
@@ -153,7 +199,10 @@ O módulo utiliza pacotes específicos para cada protocolo UDP para melhorar a d
 ## Configurações Técnicas
 
 - **Timeout padrão**: 2000ms por porta
-- **Limite de portas**: 100 por scan
+- **Limite de portas**: 
+  - GET CUSTOM: ~30-40 portas (limitado por URL 256 chars)
+  - GET RANGE: 100 portas
+  - POST CUSTOM: 500 portas (recomendado para listas grandes)
 - **Resolução DNS**: IPv4 primeiro, fallback IPv6
 - **Suporte**: IPv4 e IPv6
 
@@ -172,11 +221,12 @@ O módulo utiliza pacotes específicos para cada protocolo UDP para melhorar a d
 - `port number required` - Porta necessária para método SINGLE
 - `invalid port number` - Porta fora do range 1-65535
 - `port range too large` - Range excede 100 portas
-- `too many ports` - Lista personalizada excede 100 portas
+- `too many ports` - Lista personalizada excede limite (30-40 GET, 500 POST)
+- `missing required fields` - Body POST incompleto (host, protocol, method)
 
 ## Exemplos de Uso no Frontend
 
-### Scan Básico de Porta
+### Scan Básico de Porta (GET)
 ```javascript
 fetch('/portscan/tcp/SINGLE/example.com/80')
   .then(response => response.json())
@@ -185,6 +235,25 @@ fetch('/portscan/tcp/SINGLE/example.com/80')
       console.log('Porta 80 está aberta');
     }
   });
+```
+
+### Scan de Lista Grande (POST - Recomendado)
+```javascript
+fetch('/portscan', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    protocol: 'tcp',
+    method: 'CUSTOM',
+    host: 'example.com',
+    ports: [22, 80, 443, 8080, 8443, 9000, 9001, 9002, 9003, 9004] // Array grande
+  })
+})
+.then(response => response.json())
+.then(data => {
+  console.log(`Escaneadas ${data.totalPorts} portas`);
+  console.log(`Portas abertas: ${data.openPorts.join(', ')}`);
+});
 ```
 
 ### Scan de Portas Comuns com Alertas de Segurança
@@ -208,8 +277,9 @@ fetch('/portscan/tcp/COMMON/target.com')
 2. **Método de Scan**: Dropdown com SINGLE, COMMON, RANGE, CUSTOM
 3. **Campo de Host**: Input para hostname/IP
 4. **Especificação de Portas**: Input condicional baseado no método
-5. **Resultados**: Tabela com colunas para porta, status, serviço, risco
-6. **Alertas**: Banner destacado para portas de alto risco
+5. **Modo de Envio**: Toggle GET/POST (automático para listas >40 portas)
+6. **Resultados**: Tabela com colunas para porta, status, serviço, risco
+7. **Alertas**: Banner destacado para portas de alto risco
 
 ### Validação Frontend Recomendada
 
@@ -231,7 +301,30 @@ function validatePortscanRequest(protocol, method, host, ports) {
     return 'Range deve estar no formato início-fim';
   }
   
+  // Recomendar POST para listas grandes
+  if (method === 'CUSTOM' && Array.isArray(ports) && ports.length > 40) {
+    console.info('Lista grande detectada - usando endpoint POST para melhor performance');
+  }
+  
   return null; // Válido
+}
+
+// Função para decidir automaticamente GET vs POST
+function sendPortscanRequest(protocol, method, host, ports) {
+  const shouldUsePost = method === 'CUSTOM' && 
+    ((Array.isArray(ports) && ports.length > 40) || 
+     (typeof ports === 'string' && ports.split(',').length > 40));
+     
+  if (shouldUsePost) {
+    return fetch('/portscan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ protocol, method, host, ports })
+    });
+  } else {
+    const portsStr = Array.isArray(ports) ? ports.join(',') : ports;
+    return fetch(`/portscan/${protocol}/${method}/${host}/${portsStr || ''}`);
+  }
 }
 ```
 

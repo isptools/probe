@@ -105,17 +105,36 @@ function checkUdpPort(host, port, timeout = 1000) {
 	});
 }
 
-export const portscanModule = {
-	route: '/portscan/:protocol/:method/:id/:ports?',
-	method: 'get',
-	middleware: [optionalAuthMiddleware],
-	handler: async (request, reply) => {
+// Handler compartilhado para GET e POST
+async function portscanHandler(request, reply) {
 		const startTime = Date.now();
 		try {
-			let attrIP = request.params.id.toString();
-			const protocol = request.params.protocol.toString().toLowerCase();
-			const method = request.params.method.toString().toUpperCase();
-			const portsParam = request.params.ports;
+			// Extrair parâmetros do GET (URL) ou POST (body)
+			let attrIP, protocol, method, portsParam;
+			
+			if (request.method === 'GET') {
+				// Parâmetros da URL (GET)
+				attrIP = request.params.id.toString();
+				protocol = request.params.protocol.toString().toLowerCase();
+				method = request.params.method.toString().toUpperCase();
+				portsParam = request.params.ports;
+			} else {
+				// Parâmetros do body (POST)
+				const body = request.body || {};
+				attrIP = body.host;
+				protocol = (body.protocol || '').toLowerCase();
+				method = (body.method || '').toUpperCase();
+				portsParam = body.ports;
+				
+				// Validar body obrigatório para POST
+				if (!attrIP || !protocol || !method) {
+					return {
+						"timestamp": Date.now(),
+						"err": "missing required fields: host, protocol, method",
+						"responseTimeMs": Date.now() - startTime
+					};
+				}
+			}
 			
 			// Validar protocolo
 			if (!['tcp', 'udp'].includes(protocol)) {
@@ -253,11 +272,20 @@ export const portscanModule = {
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
-							"err": "comma-separated port list required (e.g., 80,443,22)",
+							"err": "comma-separated port list or array required (e.g., '80,443,22' or [80,443,22])",
 							"responseTimeMs": Date.now() - startTime
 						};
 					}
-					const customPorts = portsParam.split(',').map(p => parseInt(p.trim()));
+					
+					let customPorts;
+					if (Array.isArray(portsParam)) {
+						// Array de números (POST)
+						customPorts = portsParam.map(p => parseInt(p));
+					} else {
+						// String separada por vírgulas (GET/POST)
+						customPorts = portsParam.split(',').map(p => parseInt(p.trim()));
+					}
+					
 					if (customPorts.some(p => isNaN(p) || p < 1 || p > 65535)) {
 						return {
 							"timestamp": Date.now(),
@@ -268,13 +296,13 @@ export const portscanModule = {
 							"responseTimeMs": Date.now() - startTime
 						};
 					}
-					if (customPorts.length > 100) {
+					if (customPorts.length > 500) {
 						return {
 							"timestamp": Date.now(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
-							"err": "too many ports (max 100)",
+							"err": "too many ports (max 500)",
 							"responseTimeMs": Date.now() - startTime
 						};
 					}
@@ -348,14 +376,40 @@ export const portscanModule = {
 			return response;
 
 		} catch (error) {
-			return {
+			const errorResponse = {
 				"timestamp": Date.now(),
-				"protocol": request.params.protocol,
-				"method": request.params.method,
-				"host": request.params.id,
 				"err": error.message || 'unknown error',
 				"responseTimeMs": Date.now() - startTime
 			};
+			
+			// Adicionar parâmetros baseado no método da requisição
+			if (request.method === 'GET') {
+				errorResponse.protocol = request.params.protocol;
+				errorResponse.method = request.params.method;
+				errorResponse.host = request.params.id;
+			} else {
+				const body = request.body || {};
+				errorResponse.protocol = body.protocol;
+				errorResponse.method = body.method;
+				errorResponse.host = body.host;
+			}
+			
+			return errorResponse;
 		}
 	}
+
+// Endpoint GET (mantém compatibilidade)
+export const portscanModule = {
+	route: '/portscan/:protocol/:method/:id/:ports?',
+	method: 'get',
+	middleware: [optionalAuthMiddleware],
+	handler: portscanHandler
+};
+
+// Endpoint POST para método CUSTOM (aceita listas grandes)
+export const portscanPostModule = {
+	route: '/portscan',
+	method: 'post',
+	middleware: [optionalAuthMiddleware],
+	handler: portscanHandler
 };
