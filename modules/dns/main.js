@@ -1,8 +1,12 @@
 import dns from 'dns';
 import net from 'net';
 import fs from 'fs';
-import DNS2 from 'dns2';
+import { createRequire } from 'module';
 import { optionalAuthMiddleware } from '../../auth.js';
+
+// Import da biblioteca DNSSEC
+const require = createRequire(import.meta.url);
+const nativeDNS = require('native-dnssec-dns');
 
 const DNS_TIMEOUT = 5000;
 const dnsCache = new Map();
@@ -44,7 +48,7 @@ function getSystemDNSServers() {
 }
 
 /**
- * Enhanced DNSSEC validation using dns2 library
+ * Enhanced DNSSEC validation using native-dnssec-dns library
  */
 async function performDNSSECQuery(domain, recordType = 'A') {
     try {
@@ -74,98 +78,178 @@ async function performDNSSECQuery(domain, recordType = 'A') {
             global.dnsServersLogged = true;
         }
 
-        const resolver = new DNS2({
-            nameServers,
-            timeout: DNS_TIMEOUT,
-            retries: 2
-        });
+        // Function to query with native-dnssec-dns
+        function queryWithNativeDNS(domain, recordType, server) {
+            return new Promise((resolve, reject) => {
+                const question = nativeDNS.Question({
+                    name: domain,
+                    type: recordType
+                });
 
-        // Query for the main record type
-        const response = await resolver.query(domain, recordType);
+                const req = nativeDNS.Request({
+                    question: question,
+                    server: { address: server, port: 53, type: 'udp' },
+                    timeout: DNS_TIMEOUT,
+                    try_edns: true  // Important for DNSSEC
+                });
+
+                let response = null;
+
+                req.on('timeout', () => {
+                    reject(new Error(`Timeout querying ${recordType} ${domain} from ${server}`));
+                });
+
+                req.on('message', (err, answer) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    response = answer;
+                });
+
+                req.on('end', () => {
+                    if (response) {
+                        resolve(response);
+                    } else {
+                        reject(new Error(`No response for ${recordType} ${domain} from ${server}`));
+                    }
+                });
+
+                req.send();
+            });
+        }
+
+        // Try to query the main record type
+        let mainResponse = null;
+        let lastError = null;
         
+        for (const server of nameServers) {
+            try {
+                mainResponse = await queryWithNativeDNS(domain, recordType, server);
+                break;
+            } catch (error) {
+                lastError = error;
+                continue;
+            }
+        }
+
+        if (!mainResponse) {
+            throw new Error(`Failed to query ${recordType} ${domain}: ${lastError?.message || 'Unknown error'}`);
+        }
+
         // Initialize DNSSEC info
         let dnssecRecords = {};
         let dnssecEnabled = false;
         let dnssecStatus = 'insecure';
         let trustChain = [];
 
-        // Check for RRSIG records (signature records)
-        try {
-            const rrsigResponse = await resolver.query(domain, 'RRSIG');
-            if (rrsigResponse.answers && rrsigResponse.answers.length > 0) {
-                dnssecRecords.rrsig = rrsigResponse.answers.map(record => ({
-                    typeCovered: record.typeCovered || 'Unknown',
-                    algorithm: record.algorithm || 0,
-                    labels: record.labels || 0,
-                    originalTTL: record.originalTTL || 0,
-                    signatureExpiration: record.signatureExpiration ? 
-                        new Date(record.signatureExpiration * 1000).toISOString() : 'Unknown',
-                    signatureInception: record.signatureInception ? 
-                        new Date(record.signatureInception * 1000).toISOString() : 'Unknown',
-                    keyTag: record.keyTag || 0,
-                    signerName: record.signerName || 'Unknown',
-                    signature: record.signature ? `${record.signature.toString('base64').substring(0, 32)}...` : 'N/A'
-                }));
-                dnssecEnabled = true;
-                dnssecStatus = 'secure';
+        // Only query DNSSEC records if we're looking for A/AAAA or specific DNSSEC types
+        if (['A', 'AAAA', 'DNSKEY', 'DS', 'RRSIG'].includes(recordType.toUpperCase())) {
+            
+            // Check for DNSKEY records
+            try {
+                let dnskeyResponse = null;
+                for (const server of nameServers) {
+                    try {
+                        dnskeyResponse = await queryWithNativeDNS(domain, 'DNSKEY', server);
+                        break;
+                    } catch (error) {
+                        continue;
+                    }
+                }
+                
+                if (dnskeyResponse && dnskeyResponse.answer && dnskeyResponse.answer.length > 0) {
+                    dnssecRecords.dnskey = dnskeyResponse.answer.map(record => ({
+                        flags: record.flags || 0,
+                        protocol: record.protocol || 3,
+                        algorithm: record.algorithm || 0,
+                        publicKey: record.publicKey ? 
+                            (record.publicKey.buffer ? 
+                                record.publicKey.buffer.toString('base64') : 
+                                (Buffer.isBuffer(record.publicKey) ? 
+                                    record.publicKey.toString('base64') : 'N/A')) : 'N/A',
+                        isZSK: (record.flags & 0x0100) === 0x0100, // Zone Signing Key
+                        isKSK: (record.flags & 0x0101) === 0x0101  // Key Signing Key
+                    }));
+                    dnssecEnabled = true;
+                    dnssecStatus = 'secure';
+                    trustChain.push(`DNSKEY records found (${dnskeyResponse.answer.length})`);
+                }
+            } catch (error) {
+                // DNSKEY not found is normal for non-DNSSEC domains
             }
-        } catch (rrsigError) {
-            // RRSIG not found is normal for non-DNSSEC domains
+
+            // Check for DS records (delegation signer)
+            try {
+                let dsResponse = null;
+                for (const server of nameServers) {
+                    try {
+                        dsResponse = await queryWithNativeDNS(domain, 'DS', server);
+                        break;
+                    } catch (error) {
+                        continue;
+                    }
+                }
+                
+                if (dsResponse && dsResponse.answer && dsResponse.answer.length > 0) {
+                    dnssecRecords.ds = dsResponse.answer.map(record => ({
+                        keyTag: record.keytag || 0,
+                        algorithm: record.algorithm || 0,
+                        digestType: record.digestType || 0,
+                        digest: record.digest ? 
+                            (record.digest.buffer ? 
+                                record.digest.buffer.toString('hex') : 
+                                (Buffer.isBuffer(record.digest) ? 
+                                    record.digest.toString('hex') : 'N/A')) : 'N/A'
+                    }));
+                    dnssecEnabled = true;
+                    if (dnssecStatus !== 'secure') dnssecStatus = 'secure';
+                    trustChain.push(`DS record found for ${domain}`);
+                }
+            } catch (error) {
+                // DS not found is normal for some domains
+            }
+
+            // Check for RRSIG records (signature records)
+            try {
+                let rrsigResponse = null;
+                for (const server of nameServers) {
+                    try {
+                        rrsigResponse = await queryWithNativeDNS(domain, 'RRSIG', server);
+                        break;
+                    } catch (error) {
+                        continue;
+                    }
+                }
+                
+                if (rrsigResponse && rrsigResponse.answer && rrsigResponse.answer.length > 0) {
+                    dnssecRecords.rrsig = rrsigResponse.answer.map(record => ({
+                        typeCovered: record.typeCovered || 'Unknown',
+                        algorithm: record.algorithm || 0,
+                        labels: record.labels || 0,
+                        originalTTL: record.originalTtl || 0,
+                        signatureExpiration: record.signatureExpiration ? 
+                            new Date(record.signatureExpiration * 1000).toISOString() : 'Unknown',
+                        signatureInception: record.signatureInception ? 
+                            new Date(record.signatureInception * 1000).toISOString() : 'Unknown',
+                        keyTag: record.keytag || 0,
+                        signerName: record.signerName || 'Unknown',
+                        signature: record.signature ? 
+                            (Buffer.isBuffer(record.signature) ? 
+                                record.signature.toString('base64').substring(0, 32) + '...' : 
+                                record.signature.toString().substring(0, 32) + '...') : 'N/A'
+                    }));
+                    dnssecEnabled = true;
+                    dnssecStatus = 'secure';
+                    trustChain.push(`RRSIG records found (${rrsigResponse.answer.length})`);
+                }
+            } catch (error) {
+                // RRSIG not found might be normal depending on query
+            }
         }
 
-        // Check for DNSKEY records
-        try {
-            const dnskeyResponse = await resolver.query(domain, 'DNSKEY');
-            if (dnskeyResponse.answers && dnskeyResponse.answers.length > 0) {
-                dnssecRecords.dnskey = dnskeyResponse.answers.map(record => ({
-                    flags: record.flags || 0,
-                    protocol: record.protocol || 3,
-                    algorithm: record.algorithm || 0,
-                    publicKey: record.publicKey ? 
-                        `${record.publicKey.toString('base64').substring(0, 64)}...` : 'N/A',
-                    isZSK: (record.flags & 0x0100) === 0x0100, // Zone Signing Key
-                    isKSK: (record.flags & 0x0101) === 0x0101  // Key Signing Key
-                }));
-                dnssecEnabled = true;
-                if (dnssecStatus !== 'secure') dnssecStatus = 'secure';
-            }
-        } catch (dnskeyError) {
-            // DNSKEY not found is normal for non-DNSSEC domains
-        }
-
-        // Check for DS records (delegation signer)
-        try {
-            const dsResponse = await resolver.query(domain, 'DS');
-            if (dsResponse.answers && dsResponse.answers.length > 0) {
-                dnssecRecords.ds = dsResponse.answers.map(record => ({
-                    keyTag: record.keyTag || 0,
-                    algorithm: record.algorithm || 0,
-                    digestType: record.digestType || 0,
-                    digest: record.digest ? 
-                        `${record.digest.toString('hex').substring(0, 32)}...` : 'N/A'
-                }));
-                dnssecEnabled = true;
-                trustChain.push(`DS record found for ${domain}`);
-            }
-        } catch (dsError) {
-            // DS not found is normal for some domains
-        }
-
-        // Check for NSEC/NSEC3 records (proof of non-existence)
-        try {
-            const nsecResponse = await resolver.query(domain, 'NSEC');
-            if (nsecResponse.answers && nsecResponse.answers.length > 0) {
-                dnssecRecords.nsec = nsecResponse.answers.map(record => ({
-                    nextDomainName: record.nextDomainName || 'Unknown',
-                    types: record.types || []
-                }));
-            }
-        } catch (nsecError) {
-            // NSEC not found is normal
-        }
-
-        // Parse main records
-        const records = response.answers ? response.answers.map(record => {
+        // Parse main records based on type
+        const records = mainResponse.answer ? mainResponse.answer.map(record => {
             switch (recordType.toUpperCase()) {
                 case 'A':
                     return record.address;
@@ -182,23 +266,23 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                 case 'PTR':
                     return record.data;
                 case 'SOA':
-                    return `${record.primary} ${record.admin} ${record.serial} ${record.refresh} ${record.retry} ${record.expiration} ${record.minimum}`;
+                    return `${record.primary || record.nsname} ${record.admin || record.hostmaster} ${record.serial} ${record.refresh} ${record.retry} ${record.expiration || record.expire} ${record.minimum || record.minttl}`;
                 case 'SRV':
-                    return `${record.priority} ${record.weight} ${record.port} ${record.target}`;
+                    return `${record.priority} ${record.weight} ${record.port} ${record.target || record.name}`;
+                case 'DNSKEY':
+                    const pubKey = record.publicKey;
+                    const keyStr = Buffer.isBuffer(pubKey) ? pubKey.toString('base64') : (pubKey ? pubKey.toString() : 'N/A');
+                    return `${record.flags} ${record.protocol} ${record.algorithm} ${keyStr}`;
+                case 'DS':
+                    const digest = record.digest;
+                    const digestStr = Buffer.isBuffer(digest) ? digest.toString('hex') : (digest ? digest.toString() : 'N/A');
+                    return `${record.keytag} ${record.algorithm} ${record.digestType} ${digestStr}`;
+                case 'RRSIG':
+                    return `${record.typeCovered} ${record.algorithm} ${record.labels} ${record.originalTtl} ${record.signatureExpiration} ${record.signatureInception} ${record.keytag} ${record.signerName}`;
                 default:
                     return record.data || record.address || 'Unknown';
             }
         }) : [];
-
-        // Build trust chain information
-        if (dnssecEnabled) {
-            if (dnssecRecords.rrsig && dnssecRecords.rrsig.length > 0) {
-                trustChain.push(`RRSIG records found (${dnssecRecords.rrsig.length})`);
-            }
-            if (dnssecRecords.dnskey && dnssecRecords.dnskey.length > 0) {
-                trustChain.push(`DNSKEY records found (${dnssecRecords.dnskey.length})`);
-            }
-        }
 
         const result = {
             domain,
@@ -209,15 +293,15 @@ async function performDNSSECQuery(domain, recordType = 'A') {
             dnssecRecords,
             trustChain,
             queryInfo: {
-                authority: response.authorities ? response.authorities.length : 0,
-                additional: response.additionals ? response.additionals.length : 0,
+                authority: mainResponse.authority ? mainResponse.authority.length : 0,
+                additional: mainResponse.additional ? mainResponse.additional.length : 0,
                 flags: {
-                    authoritative: response.header ? response.header.aa : false,
-                    truncated: response.header ? response.header.tc : false,
-                    recursionDesired: response.header ? response.header.rd : false,
-                    recursionAvailable: response.header ? response.header.ra : false,
-                    authenticatedData: response.header ? response.header.ad : false,
-                    checkingDisabled: response.header ? response.header.cd : false
+                    authoritative: mainResponse.header ? mainResponse.header.aa : false,
+                    truncated: mainResponse.header ? mainResponse.header.tc : false,
+                    recursionDesired: mainResponse.header ? mainResponse.header.rd : false,
+                    recursionAvailable: mainResponse.header ? mainResponse.header.ra : false,
+                    authenticatedData: mainResponse.header ? mainResponse.header.ad : false,
+                    checkingDisabled: mainResponse.header ? mainResponse.header.cd : false
                 }
             }
         };
@@ -239,6 +323,7 @@ async function performDNSSECQuery(domain, recordType = 'A') {
         };
     }
 }
+
 export const dnsModule = {
     route: '/dns/:method/:id',
     method: 'get',
@@ -356,7 +441,7 @@ export const dnsModule = {
                         result = result.map(srv => `${srv.priority} ${srv.weight} ${srv.port} ${srv.name}`);
                         break;
                     default:
-                        // For DNSSEC-specific records, try with dns2 if DNSSEC is enabled
+                        // For DNSSEC-specific records, try with native-dnssec-dns if DNSSEC is enabled
                         if (enableDNSSEC && ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3'].includes(method)) {
                             const dnssecResult = await performDNSSECQuery(hostname, method);
                             result = dnssecResult.records;
