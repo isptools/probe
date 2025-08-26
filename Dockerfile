@@ -10,6 +10,8 @@ RUN apk add --no-cache \
     dumb-init \
     make \
     g++ \
+    python3 \
+    py3-pip \
     wget \
     git \
     && npm install -g npm@latest pm2
@@ -17,13 +19,7 @@ RUN apk add --no-cache \
 ENV PYTHON=/usr/bin/python3
 
 # clonar repositório
-RUN git clone https://github.com/isptools/probe.git .
-
-# Copiar arquivos
-# COPY . .
-
-# Instalar dependências npm
-RUN npm ci --omit=dev --no-audit --no-fund
+RUN git clone https://github.com/isptools/probe.git . && npm ci --omit=dev --no-audit --no-fund
 
 EXPOSE 8000
 
