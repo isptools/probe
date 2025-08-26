@@ -97,8 +97,8 @@ POST /portscan
   "ports": [53, 123, 161, 500, 1812, 1813, 4500, 5060]
 }
 ```
-- Máximo de 500 portas por lista (aumentado do limite anterior de 100)
-- Sem limitação de URL - suporta listas muito grandes
+- Máximo de 100 portas por lista (parametrizável)
+- Sem limitação de URL - aceita listas que não cabem na URL GET
 
 ## Respostas
 
@@ -202,9 +202,22 @@ O módulo utiliza pacotes específicos para cada protocolo UDP para melhorar a d
 - **Limite de portas**: 
   - GET CUSTOM: ~30-40 portas (limitado por URL 256 chars)
   - GET RANGE: 100 portas
-  - POST CUSTOM: 500 portas (recomendado para listas grandes)
+  - POST CUSTOM: 100 portas (parametrizável via MAX_PORTS_LIMIT)
 - **Resolução DNS**: IPv4 primeiro, fallback IPv6
 - **Suporte**: IPv4 e IPv6
+
+### Configuração do Limite de Portas
+
+Para alterar o limite máximo de portas, edite a constante no arquivo `main.js`:
+
+```javascript
+const MAX_PORTS_LIMIT = 100; // Altere este valor conforme necessário
+```
+
+**Recomendações de limite:**
+- **Produção**: 100 portas (performance balanceada)
+- **Ambiente controlado**: 200-500 portas (se necessário)
+- **Scan intensivo**: Considere implementar paginação ou scan assíncrono
 
 ## Códigos de Erro
 
@@ -221,7 +234,7 @@ O módulo utiliza pacotes específicos para cada protocolo UDP para melhorar a d
 - `port number required` - Porta necessária para método SINGLE
 - `invalid port number` - Porta fora do range 1-65535
 - `port range too large` - Range excede 100 portas
-- `too many ports` - Lista personalizada excede limite (30-40 GET, 500 POST)
+- `too many ports` - Lista personalizada excede limite (30-40 GET, 100 POST)
 - `missing required fields` - Body POST incompleto (host, protocol, method)
 
 ## Exemplos de Uso no Frontend
@@ -246,7 +259,7 @@ fetch('/portscan', {
     protocol: 'tcp',
     method: 'CUSTOM',
     host: 'example.com',
-    ports: [22, 80, 443, 8080, 8443, 9000, 9001, 9002, 9003, 9004] // Array grande
+    ports: [22, 80, 443, 8080, 8443, 9000, 9001, 9002, 9003, 9004] // Até 100 portas
   })
 })
 .then(response => response.json())

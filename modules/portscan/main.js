@@ -7,6 +7,7 @@ import { getTcpProtocolInfo } from './tcp-protocols.js';
 
 // Configuração específica do módulo PORTSCAN
 const PORTSCAN_TIMEOUT = 2000; // 2 segundos para scan de portas
+const MAX_PORTS_LIMIT = 100; // Limite máximo de portas por scan (parametrizável)
 
 // Lista de portas comuns para scan TCP
 const commonTcpPorts = [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 1433, 3306, 3389, 5432, 5984, 6379, 8080, 8443, 9200];
@@ -250,13 +251,13 @@ async function portscanHandler(request, reply) {
 							"responseTimeMs": Date.now() - startTime
 						};
 					}
-					if (endPort - startPort > 100) {
+					if (endPort - startPort > MAX_PORTS_LIMIT) {
 						return {
 							"timestamp": Date.now(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
-							"err": "port range too large (max 100 ports)",
+							"err": `port range too large (max ${MAX_PORTS_LIMIT} ports)`,
 							"responseTimeMs": Date.now() - startTime
 						};
 					}
@@ -296,13 +297,13 @@ async function portscanHandler(request, reply) {
 							"responseTimeMs": Date.now() - startTime
 						};
 					}
-					if (customPorts.length > 500) {
+					if (customPorts.length > MAX_PORTS_LIMIT) {
 						return {
 							"timestamp": Date.now(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
-							"err": "too many ports (max 500)",
+							"err": `too many ports (max ${MAX_PORTS_LIMIT})`,
 							"responseTimeMs": Date.now() - startTime
 						};
 					}
