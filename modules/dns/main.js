@@ -159,18 +159,37 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                 }
                 
                 if (dnskeyResponse && dnskeyResponse.answer && dnskeyResponse.answer.length > 0) {
-                    dnssecRecords.dnskey = dnskeyResponse.answer.map(record => ({
-                        flags: record.flags || 0,
-                        protocol: record.protocol || 3,
-                        algorithm: record.algorithm || 0,
-                        publicKey: record.publicKey ? 
-                            (record.publicKey.buffer ? 
-                                record.publicKey.buffer.toString('base64') : 
-                                (Buffer.isBuffer(record.publicKey) ? 
-                                    record.publicKey.toString('base64') : 'N/A')) : 'N/A',
-                        isZSK: (record.flags & 0x0100) === 0x0100, // Zone Signing Key
-                        isKSK: (record.flags & 0x0101) === 0x0101  // Key Signing Key
-                    }));
+                    dnssecRecords.dnskey = dnskeyResponse.answer.map(record => {
+                        let publicKeyBase64 = 'N/A';
+                        
+                        if (record.publicKey) {
+                            if (Buffer.isBuffer(record.publicKey)) {
+                                publicKeyBase64 = record.publicKey.toString('base64');
+                            } else if (record.publicKey.buffer && Buffer.isBuffer(record.publicKey.buffer)) {
+                                publicKeyBase64 = record.publicKey.buffer.toString('base64');
+                            } else if (typeof record.publicKey === 'string' && record.publicKey.length > 50) {
+                                publicKeyBase64 = record.publicKey;
+                            } else if (typeof record.publicKey === 'object' && record.publicKey.data) {
+                                publicKeyBase64 = Buffer.isBuffer(record.publicKey.data) ? 
+                                    record.publicKey.data.toString('base64') : 'N/A';
+                            } else {
+                                try {
+                                    publicKeyBase64 = Buffer.from(record.publicKey).toString('base64');
+                                } catch (e) {
+                                    publicKeyBase64 = 'N/A';
+                                }
+                            }
+                        }
+                        
+                        return {
+                            flags: record.flags || 0,
+                            protocol: record.protocol || 3,
+                            algorithm: record.algorithm || 0,
+                            publicKey: publicKeyBase64,
+                            isZSK: (record.flags & 0x0100) === 0x0100, // Zone Signing Key
+                            isKSK: (record.flags & 0x0101) === 0x0101  // Key Signing Key
+                        };
+                    });
                     dnssecEnabled = true;
                     dnssecStatus = 'secure';
                     trustChain.push(`DNSKEY records found (${dnskeyResponse.answer.length})`);
@@ -192,16 +211,31 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                 }
                 
                 if (dsResponse && dsResponse.answer && dsResponse.answer.length > 0) {
-                    dnssecRecords.ds = dsResponse.answer.map(record => ({
-                        keyTag: record.keytag || 0,
-                        algorithm: record.algorithm || 0,
-                        digestType: record.digestType || 0,
-                        digest: record.digest ? 
-                            (record.digest.buffer ? 
-                                record.digest.buffer.toString('hex') : 
-                                (Buffer.isBuffer(record.digest) ? 
-                                    record.digest.toString('hex') : 'N/A')) : 'N/A'
-                    }));
+                    dnssecRecords.ds = dsResponse.answer.map(record => {
+                        let digestHex = 'N/A';
+                        if (record.digest) {
+                            if (Buffer.isBuffer(record.digest)) {
+                                digestHex = record.digest.toString('hex');
+                            } else if (record.digest.buffer && Buffer.isBuffer(record.digest.buffer)) {
+                                digestHex = record.digest.buffer.toString('hex');
+                            } else if (typeof record.digest === 'string') {
+                                digestHex = record.digest;
+                            } else {
+                                try {
+                                    digestHex = Buffer.from(record.digest).toString('hex');
+                                } catch (e) {
+                                    digestHex = 'N/A';
+                                }
+                            }
+                        }
+                        
+                        return {
+                            keyTag: record.keytag || 0,
+                            algorithm: record.algorithm || 0,
+                            digestType: record.digestType || 0,
+                            digest: digestHex
+                        };
+                    });
                     dnssecEnabled = true;
                     if (dnssecStatus !== 'secure') dnssecStatus = 'secure';
                     trustChain.push(`DS record found for ${domain}`);
@@ -229,15 +263,20 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                         labels: record.labels || 0,
                         originalTTL: record.originalTtl || 0,
                         signatureExpiration: record.signatureExpiration ? 
-                            new Date(record.signatureExpiration * 1000).toISOString() : 'Unknown',
+                            (record.signatureExpiration > 2147483647 ? 
+                                new Date(record.signatureExpiration).toISOString() : 
+                                new Date(record.signatureExpiration * 1000).toISOString()) : 'Unknown',
                         signatureInception: record.signatureInception ? 
-                            new Date(record.signatureInception * 1000).toISOString() : 'Unknown',
+                            (record.signatureInception > 2147483647 ? 
+                                new Date(record.signatureInception).toISOString() : 
+                                new Date(record.signatureInception * 1000).toISOString()) : 'Unknown',
                         keyTag: record.keytag || 0,
                         signerName: record.signerName || 'Unknown',
                         signature: record.signature ? 
                             (Buffer.isBuffer(record.signature) ? 
-                                record.signature.toString('base64').substring(0, 32) + '...' : 
-                                record.signature.toString().substring(0, 32) + '...') : 'N/A'
+                                record.signature.toString('base64') : 
+                                (typeof record.signature === 'string' ? record.signature : 
+                                    Buffer.from(record.signature).toString('base64'))) : 'N/A'
                     }));
                     dnssecEnabled = true;
                     dnssecStatus = 'secure';
@@ -287,11 +326,52 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                     };
                 case 'DNSKEY':
                     const pubKey = record.publicKey;
-                    const keyStr = Buffer.isBuffer(pubKey) ? pubKey.toString('base64') : (pubKey ? pubKey.toString() : 'N/A');
+                    let keyStr = 'N/A';
+                    
+                    if (pubKey) {
+                        if (Buffer.isBuffer(pubKey)) {
+                            keyStr = pubKey.toString('base64');
+                        } else if (pubKey.buffer && Buffer.isBuffer(pubKey.buffer)) {
+                            keyStr = pubKey.buffer.toString('base64');
+                        } else if (typeof pubKey === 'string' && pubKey.length > 50) {
+                            // Already base64 encoded
+                            keyStr = pubKey;
+                        } else if (typeof pubKey === 'object' && pubKey.data) {
+                            // Handle object with data property
+                            keyStr = Buffer.isBuffer(pubKey.data) ? pubKey.data.toString('base64') : 'N/A';
+                        } else {
+                            // Try to convert anything else to base64
+                            try {
+                                keyStr = Buffer.from(pubKey).toString('base64');
+                            } catch (e) {
+                                keyStr = 'N/A';
+                            }
+                        }
+                    }
+                    
                     return `${record.flags} ${record.protocol} ${record.algorithm} ${keyStr}`;
                 case 'DS':
                     const digest = record.digest;
-                    const digestStr = Buffer.isBuffer(digest) ? digest.toString('hex') : (digest ? digest.toString() : 'N/A');
+                    let digestStr = 'N/A';
+                    
+                    if (digest) {
+                        if (Buffer.isBuffer(digest)) {
+                            digestStr = digest.toString('hex');
+                        } else if (digest.buffer && Buffer.isBuffer(digest.buffer)) {
+                            digestStr = digest.buffer.toString('hex');
+                        } else if (digest.data && Buffer.isBuffer(digest.data)) {
+                            digestStr = digest.data.toString('hex');
+                        } else if (typeof digest === 'string') {
+                            digestStr = digest;
+                        } else {
+                            try {
+                                digestStr = Buffer.from(digest).toString('hex');
+                            } catch (e) {
+                                digestStr = digest.toString ? digest.toString() : 'N/A';
+                            }
+                        }
+                    }
+                    
                     return `${record.keytag} ${record.algorithm} ${record.digestType} ${digestStr}`;
                 case 'RRSIG':
                     return `${record.typeCovered} ${record.algorithm} ${record.labels} ${record.originalTtl} ${record.signatureExpiration} ${record.signatureInception} ${record.keytag} ${record.signerName}`;

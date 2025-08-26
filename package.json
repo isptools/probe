@@ -21,12 +21,11 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "watch": {
-    "build": [
-      "*.js",
-      "*.json",
+  "nodemonConfig": {
+    "watch": [
       "modules/**/*"
-    ]
+    ],
+    "delay": 2000
   },
   "dependencies": {
     "axios": "^1.7.2",
