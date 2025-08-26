@@ -459,6 +459,24 @@ export const dnsModule = {
             const method = request.params.method.toString().toUpperCase();
             const enableDNSSEC = request.query.dnssec === 'true' || request.query.dnssec === '1';
             
+            // Validate DNS record type
+            const validTypes = ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'PTR', 'SOA', 'SRV', 'CAA', 'DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'TLSA'];
+            if (!validTypes.includes(method)) {
+                return {
+                    "timestamp": Date.now(),
+                    "method": method,
+                    "host": hostname,
+                    "result": null,
+                    "err": { 
+                        code: 'INVALID_TYPE', 
+                        message: `Unsupported DNS record type: ${method}. Supported types: ${validTypes.join(', ')}. For DNSSEC health check, use /dns/health/${hostname}` 
+                    },
+                    "ipVersion": 0,
+                    "responseTimeMs": Date.now() - startTime,
+                    "dnssec": null
+                };
+            }
+            
             // Determine IP version if hostname is already an IP
             let ipVersion = 0;
             if (net.isIP(hostname)) {
@@ -598,8 +616,8 @@ export const dnsModule = {
                         }
                         break;
                     default:
-                        // For DNSSEC-specific records, try with native-dnssec-dns if DNSSEC is enabled
-                        if (enableDNSSEC && ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'CAA', 'TLSA'].includes(method)) {
+                        // For DNSSEC-specific records, use native-dnssec-dns
+                        if (enableDNSSEC) {
                             const dnssecResult = await performDNSSECQuery(hostname, method);
                             result = dnssecResult.records;
                             if (!dnssecInfo) {
@@ -613,7 +631,8 @@ export const dnsModule = {
                                 };
                             }
                         } else {
-                            throw new Error(`Unsupported DNS record type: ${method}`);
+                            // This should not happen due to validation above, but keeping as fallback
+                            throw new Error(`DNS record type ${method} requires DNSSEC to be enabled (?dnssec=true)`);
                         }
                 }
             }
