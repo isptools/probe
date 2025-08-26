@@ -257,27 +257,44 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                 }
                 
                 if (rrsigResponse && rrsigResponse.answer && rrsigResponse.answer.length > 0) {
-                    dnssecRecords.rrsig = rrsigResponse.answer.map(record => ({
-                        typeCovered: record.typeCovered || 'Unknown',
-                        algorithm: record.algorithm || 0,
-                        labels: record.labels || 0,
-                        originalTTL: record.originalTtl || 0,
-                        signatureExpiration: record.signatureExpiration ? 
-                            (record.signatureExpiration > 2147483647 ? 
-                                new Date(record.signatureExpiration).toISOString() : 
-                                new Date(record.signatureExpiration * 1000).toISOString()) : 'Unknown',
-                        signatureInception: record.signatureInception ? 
-                            (record.signatureInception > 2147483647 ? 
-                                new Date(record.signatureInception).toISOString() : 
-                                new Date(record.signatureInception * 1000).toISOString()) : 'Unknown',
-                        keyTag: record.keytag || 0,
-                        signerName: record.signerName || 'Unknown',
-                        signature: record.signature ? 
-                            (Buffer.isBuffer(record.signature) ? 
-                                record.signature.toString('base64') : 
-                                (typeof record.signature === 'string' ? record.signature : 
-                                    Buffer.from(record.signature).toString('base64'))) : 'N/A'
-                    }));
+                    dnssecRecords.rrsig = rrsigResponse.answer.map(record => {
+                        let signatureBase64 = 'N/A';
+                        if (record.signature) {
+                            if (Buffer.isBuffer(record.signature)) {
+                                signatureBase64 = record.signature.toString('base64');
+                            } else if (record.signature.buffer && Buffer.isBuffer(record.signature.buffer)) {
+                                signatureBase64 = record.signature.buffer.toString('base64');
+                            } else if (record.signature.data && Buffer.isBuffer(record.signature.data)) {
+                                signatureBase64 = record.signature.data.toString('base64');
+                            } else if (typeof record.signature === 'string') {
+                                signatureBase64 = record.signature;
+                            } else {
+                                try {
+                                    signatureBase64 = Buffer.from(record.signature).toString('base64');
+                                } catch (e) {
+                                    signatureBase64 = 'N/A';
+                                }
+                            }
+                        }
+                        
+                        return {
+                            typeCovered: record.typeCovered || 'Unknown',
+                            algorithm: record.algorithm || 0,
+                            labels: record.labels || 0,
+                            originalTTL: record.originalTtl || 0,
+                            signatureExpiration: record.signatureExpiration ? 
+                                (record.signatureExpiration > 2147483647 ? 
+                                    new Date(record.signatureExpiration).toISOString() : 
+                                    new Date(record.signatureExpiration * 1000).toISOString()) : 'Unknown',
+                            signatureInception: record.signatureInception ? 
+                                (record.signatureInception > 2147483647 ? 
+                                    new Date(record.signatureInception).toISOString() : 
+                                    new Date(record.signatureInception * 1000).toISOString()) : 'Unknown',
+                            keyTag: record.keytag || 0,
+                            signerName: record.signerName || 'Unknown',
+                            signature: signatureBase64
+                        };
+                    });
                     dnssecEnabled = true;
                     dnssecStatus = 'secure';
                     trustChain.push(`RRSIG records found (${rrsigResponse.answer.length})`);
