@@ -273,19 +273,57 @@ async function portscanHandler(request, reply) {
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
-							"err": "comma-separated port list or array required (e.g., '80,443,22' or [80,443,22])",
+							"err": "comma-separated port list or array required (e.g., '80,443,22,8080-8090' or [80,443,22])",
 							"responseTimeMs": Date.now() - startTime
 						};
 					}
 					
-					let customPorts;
+					let customPorts = [];
 					if (Array.isArray(portsParam)) {
-						// Array de números (POST)
+						// Array de números (POST) - não suporta ranges em array
 						customPorts = portsParam.map(p => parseInt(p));
 					} else {
-						// String separada por vírgulas (GET/POST)
-						customPorts = portsParam.split(',').map(p => parseInt(p.trim()));
+						// String separada por vírgulas (GET/POST) - suporta ranges
+						const portItems = portsParam.split(',').map(item => item.trim());
+						
+						for (const item of portItems) {
+							if (item.includes('-')) {
+								// Range de portas (ex: 80-85)
+								const [start, end] = item.split('-').map(p => parseInt(p.trim()));
+								if (isNaN(start) || isNaN(end) || start < 1 || end > 65535 || start > end) {
+									return {
+										"timestamp": Date.now(),
+										"protocol": protocol,
+										"method": method,
+										"host": attrIP,
+										"err": `invalid port range '${item}' (format: start-end, 1-65535, start <= end)`,
+										"responseTimeMs": Date.now() - startTime
+									};
+								}
+								// Adicionar todas as portas do range
+								for (let port = start; port <= end; port++) {
+									customPorts.push(port);
+								}
+							} else {
+								// Porta individual
+								const port = parseInt(item);
+								if (isNaN(port) || port < 1 || port > 65535) {
+									return {
+										"timestamp": Date.now(),
+										"protocol": protocol,
+										"method": method,
+										"host": attrIP,
+										"err": `invalid port number '${item}' (1-65535)`,
+										"responseTimeMs": Date.now() - startTime
+									};
+								}
+								customPorts.push(port);
+							}
+						}
 					}
+					
+					// Remover portas duplicadas e ordenar
+					customPorts = [...new Set(customPorts)].sort((a, b) => a - b);
 					
 					if (customPorts.some(p => isNaN(p) || p < 1 || p > 65535)) {
 						return {

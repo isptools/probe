@@ -72,23 +72,26 @@ Content-Type: application/json
 #### GET (Limitado)
 ```
 /portscan/tcp/CUSTOM/example.com/22,80,443,8080
-/portscan/udp/CUSTOM/dns.server.com/53,123,161
+/portscan/tcp/CUSTOM/example.com/22,80-85,443,8080
+/portscan/udp/CUSTOM/dns.server.com/53,123,161,1000-1010
 ```
 - Máximo de ~30-40 portas (limitado por URL de 256 caracteres)
 - Separadas por vírgula
+- **Suporte a ranges**: Use formato `início-fim` (ex: `80-85` para portas 80, 81, 82, 83, 84, 85)
+- Pode misturar portas individuais e ranges: `22,80-85,443,8080`
 
 #### POST (Recomendado para Listas Grandes)
 ```javascript
-// Usando string separada por vírgulas
+// Usando string separada por vírgulas (suporta ranges)
 POST /portscan
 {
   "protocol": "tcp",
   "method": "CUSTOM", 
   "host": "example.com",
-  "ports": "22,80,443,8080,8443,9000,9001,9002..."
+  "ports": "22,80-85,443,8080,8443,9000-9010"
 }
 
-// Usando array de números (mais limpo)
+// Usando array de números (não suporta ranges)
 POST /portscan
 {
   "protocol": "udp",
@@ -99,6 +102,8 @@ POST /portscan
 ```
 - Máximo de 100 portas por lista (parametrizável)
 - Sem limitação de URL - aceita listas que não cabem na URL GET
+- **String com ranges**: Suporta mistura de portas e ranges
+- **Array**: Apenas portas individuais (ranges devem ser expandidos manualmente)
 
 ## Respostas
 
@@ -233,6 +238,7 @@ const MAX_PORTS_LIMIT = 100; // Altere este valor conforme necessário
 - `host not found` - Hostname não pôde ser resolvido
 - `port number required` - Porta necessária para método SINGLE
 - `invalid port number` - Porta fora do range 1-65535
+- `invalid port range` - Range de portas inválido (formato: início-fim)
 - `port range too large` - Range excede 100 portas
 - `too many ports` - Lista personalizada excede limite (30-40 GET, 100 POST)
 - `missing required fields` - Body POST incompleto (host, protocol, method)
@@ -266,6 +272,26 @@ fetch('/portscan', {
 .then(data => {
   console.log(`Escaneadas ${data.totalPorts} portas`);
   console.log(`Portas abertas: ${data.openPorts.join(', ')}`);
+});
+```
+
+### Scan com Ranges Misturados (POST com String)
+```javascript
+fetch('/portscan', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    protocol: 'tcp',
+    method: 'CUSTOM',
+    host: 'server.example.com',
+    ports: '22,80-85,443,8080-8090,9000' // Mistura portas individuais e ranges
+  })
+})
+.then(response => response.json())
+.then(data => {
+  console.log(`Escaneadas ${data.totalPorts} portas`);
+  console.log(`Portas abertas: ${data.openPorts.join(', ')}`);
+  // Resultado incluirá: 22, 80, 81, 82, 83, 84, 85, 443, 8080-8090, 9000
 });
 ```
 
@@ -312,6 +338,24 @@ function validatePortscanRequest(protocol, method, host, ports) {
   
   if (method === 'RANGE' && (!ports || !ports.includes('-'))) {
     return 'Range deve estar no formato início-fim';
+  }
+  
+  // Validar formato CUSTOM com suporte a ranges
+  if (method === 'CUSTOM' && typeof ports === 'string') {
+    const items = ports.split(',').map(item => item.trim());
+    for (const item of items) {
+      if (item.includes('-')) {
+        const [start, end] = item.split('-').map(p => parseInt(p.trim()));
+        if (isNaN(start) || isNaN(end) || start < 1 || end > 65535 || start > end) {
+          return `Range inválido: ${item}`;
+        }
+      } else {
+        const port = parseInt(item);
+        if (isNaN(port) || port < 1 || port > 65535) {
+          return `Porta inválida: ${item}`;
+        }
+      }
+    }
   }
   
   // Recomendar POST para listas grandes
