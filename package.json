@@ -21,8 +21,12 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "watch":{
-    "build": ["*.js", "*.json", "modules/**/*"]
+  "watch": {
+    "build": [
+      "*.js",
+      "*.json",
+      "modules/**/*"
+    ]
   },
   "dependencies": {
     "axios": "^1.7.2",

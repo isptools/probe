@@ -295,6 +295,16 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                     return `${record.keytag} ${record.algorithm} ${record.digestType} ${digestStr}`;
                 case 'RRSIG':
                     return `${record.typeCovered} ${record.algorithm} ${record.labels} ${record.originalTtl} ${record.signatureExpiration} ${record.signatureInception} ${record.keytag} ${record.signerName}`;
+                case 'NSEC':
+                    return `${record.nextDomainName || record.nextDomain || 'N/A'} ${(record.types || []).join(' ')}`;
+                case 'NSEC3':
+                    return `${record.hashAlgorithm || 0} ${record.flags || 0} ${record.iterations || 0} ${record.salt || '-'} ${record.nextHashedOwnerName || record.nextDomain || 'N/A'} ${(record.types || []).join(' ')}`;
+                case 'CAA':
+                    return `${record.flags || 0} ${record.tag || 'unknown'} "${record.value || record.data || 'N/A'}"`;
+                case 'TLSA':
+                    const certData = record.certificateAssociationData;
+                    const certStr = Buffer.isBuffer(certData) ? certData.toString('hex').substring(0, 32) + '...' : (certData || 'N/A');
+                    return `${record.certificateUsage || 0} ${record.selector || 0} ${record.matchingType || 0} ${certStr}`;
                 default:
                     return record.data || record.address || 'Unknown';
             }
@@ -472,9 +482,27 @@ export const dnsModule = {
                             target: srv.name
                         }));
                         break;
+                    case 'CAA':
+                        try {
+                            result = await dnsPromises.resolveCaa(hostname);
+                            result = result.map(caa => ({
+                                flags: caa.critical ? 128 : 0,
+                                tag: caa.issue || caa.issuewild || caa.iodef || 'unknown',
+                                value: caa.value || 'N/A'
+                            }));
+                        } catch (error) {
+                            // If native CAA fails, try manual lookup
+                            if (enableDNSSEC) {
+                                const caaResult = await performDNSSECQuery(hostname, 'CAA');
+                                result = caaResult.records;
+                            } else {
+                                throw error;
+                            }
+                        }
+                        break;
                     default:
                         // For DNSSEC-specific records, try with native-dnssec-dns if DNSSEC is enabled
-                        if (enableDNSSEC && ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3'].includes(method)) {
+                        if (enableDNSSEC && ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'CAA', 'TLSA'].includes(method)) {
                             const dnssecResult = await performDNSSECQuery(hostname, method);
                             result = dnssecResult.records;
                             if (!dnssecInfo) {
@@ -530,6 +558,540 @@ export const dnsModule = {
             };
 
             return errorResponse;
+        }
+    }
+};
+
+// DNSSEC Validation Endpoint - Comprehensive analysis
+export const dnssecValidate = {
+    route: '/dns/validate/:domain',
+    method: 'get',
+    middleware: [optionalAuthMiddleware],
+    handler: async (request, reply) => {
+        const startTime = Date.now();
+        
+        try {
+            const domain = request.params.domain.toString().toLowerCase();
+            
+            // Cache key for complete validation
+            const cacheKey = `validate_${domain}`;
+            const cached = dnsCache.get(cacheKey);
+            if (cached && Date.now() - cached.timestamp < 60000) {
+                return {
+                    ...cached.data,
+                    "responseTimeMs": Date.now() - startTime,
+                    "cached": true
+                };
+            }
+
+            // Perform comprehensive DNSSEC analysis
+            const results = {};
+            const warnings = [];
+            const errors = [];
+            let overallStatus = 'secure';
+
+            // 1. Check for DNSKEY records
+            try {
+                const dnskeyResult = await performDNSSECQuery(domain, 'DNSKEY');
+                results.dnskey = dnskeyResult;
+                
+                if (dnskeyResult.records && dnskeyResult.records.length > 0) {
+                    results.hasKeys = true;
+                    results.keyCount = dnskeyResult.records.length;
+                    
+                    // Analyze key types
+                    const kskCount = dnskeyResult.dnssecRecords.dnskey ? 
+                        dnskeyResult.dnssecRecords.dnskey.filter(k => k.isKSK).length : 0;
+                    const zskCount = dnskeyResult.dnssecRecords.dnskey ? 
+                        dnskeyResult.dnssecRecords.dnskey.filter(k => k.isZSK).length : 0;
+                    
+                    results.keyAnalysis = {
+                        kskCount,
+                        zskCount,
+                        totalKeys: kskCount + zskCount
+                    };
+                    
+                    if (kskCount === 0) warnings.push('No Key Signing Key (KSK) found');
+                    if (zskCount === 0) warnings.push('No Zone Signing Key (ZSK) found');
+                } else {
+                    results.hasKeys = false;
+                    overallStatus = 'insecure';
+                    errors.push('No DNSKEY records found - domain is not signed');
+                }
+            } catch (error) {
+                results.dnskey = { error: error.message };
+                overallStatus = 'bogus';
+                errors.push(`DNSKEY query failed: ${error.message}`);
+            }
+
+            // 2. Check for DS records
+            try {
+                const dsResult = await performDNSSECQuery(domain, 'DS');
+                results.ds = dsResult;
+                
+                if (dsResult.records && dsResult.records.length > 0) {
+                    results.hasDS = true;
+                    results.dsCount = dsResult.records.length;
+                } else {
+                    results.hasDS = false;
+                    if (results.hasKeys) {
+                        warnings.push('Domain has DNSKEY but no DS record in parent zone');
+                    }
+                }
+            } catch (error) {
+                results.ds = { error: error.message };
+                warnings.push(`DS query failed: ${error.message}`);
+            }
+
+            // 3. Check RRSIG records
+            try {
+                const rrsigResult = await performDNSSECQuery(domain, 'RRSIG');
+                results.rrsig = rrsigResult;
+                
+                if (rrsigResult.records && rrsigResult.records.length > 0) {
+                    results.hasSigs = true;
+                    results.sigCount = rrsigResult.records.length;
+                    
+                    // Check signature expiration
+                    const now = new Date();
+                    const expiredSigs = [];
+                    const expiringEoon = [];
+                    
+                    if (rrsigResult.dnssecRecords.rrsig) {
+                        rrsigResult.dnssecRecords.rrsig.forEach((sig, index) => {
+                            if (sig.signatureExpiration && sig.signatureExpiration !== 'Unknown') {
+                                const expDate = new Date(sig.signatureExpiration);
+                                const timeDiff = expDate.getTime() - now.getTime();
+                                const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                                
+                                if (daysDiff < 0) {
+                                    expiredSigs.push(index);
+                                } else if (daysDiff < 7) {
+                                    expiringEoon.push({ index, daysLeft: daysDiff });
+                                }
+                            }
+                        });
+                    }
+                    
+                    if (expiredSigs.length > 0) {
+                        overallStatus = 'bogus';
+                        errors.push(`${expiredSigs.length} signature(s) have expired`);
+                    }
+                    
+                    if (expiringEoon.length > 0) {
+                        warnings.push(`${expiringEoon.length} signature(s) expiring within 7 days`);
+                    }
+                    
+                    results.signatureStatus = {
+                        total: rrsigResult.records.length,
+                        expired: expiredSigs.length,
+                        expiringSoon: expiringEoon.length
+                    };
+                } else {
+                    results.hasSigs = false;
+                    if (results.hasKeys) {
+                        overallStatus = 'bogus';
+                        errors.push('DNSKEY found but no RRSIG records - signatures missing');
+                    }
+                }
+            } catch (error) {
+                results.rrsig = { error: error.message };
+                if (results.hasKeys) {
+                    warnings.push(`RRSIG query failed: ${error.message}`);
+                }
+            }
+
+            // 4. Test A record with DNSSEC
+            try {
+                const aResult = await performDNSSECQuery(domain, 'A');
+                results.aRecord = {
+                    hasRecords: aResult.records && aResult.records.length > 0,
+                    dnssecStatus: aResult.dnssecStatus,
+                    ipCount: aResult.records ? aResult.records.length : 0
+                };
+            } catch (error) {
+                results.aRecord = { error: error.message };
+            }
+
+            // Final status determination
+            if (errors.length > 0) {
+                overallStatus = 'bogus';
+            } else if (!results.hasKeys) {
+                overallStatus = 'insecure';
+            } else if (warnings.length > 2) {
+                overallStatus = 'warning';
+            }
+
+            const response = {
+                timestamp: Date.now(),
+                domain,
+                overallStatus,
+                summary: {
+                    hasDNSSEC: results.hasKeys || false,
+                    hasDS: results.hasDS || false,
+                    hasValidSignatures: results.hasSigs || false,
+                    keyCount: results.keyCount || 0,
+                    signatureCount: results.sigCount || 0
+                },
+                analysis: results,
+                warnings,
+                errors,
+                responseTimeMs: Date.now() - startTime
+            };
+
+            // Cache the response
+            dnsCache.set(cacheKey, {
+                data: response,
+                timestamp: Date.now()
+            });
+
+            return response;
+
+        } catch (err) {
+            return {
+                timestamp: Date.now(),
+                domain: request.params.domain.toString(),
+                overallStatus: 'error',
+                error: err.message,
+                responseTimeMs: Date.now() - startTime
+            };
+        }
+    }
+};
+
+// DNSSEC Chain of Trust Endpoint
+export const dnssecChain = {
+    route: '/dns/chain/:domain',
+    method: 'get',
+    middleware: [optionalAuthMiddleware],
+    handler: async (request, reply) => {
+        const startTime = Date.now();
+        
+        try {
+            const domain = request.params.domain.toString().toLowerCase();
+            
+            const cacheKey = `chain_${domain}`;
+            const cached = dnsCache.get(cacheKey);
+            if (cached && Date.now() - cached.timestamp < 300000) { // 5min cache
+                return {
+                    ...cached.data,
+                    "responseTimeMs": Date.now() - startTime,
+                    "cached": true
+                };
+            }
+
+            const chain = [];
+            const errors = [];
+            let currentDomain = domain;
+
+            // Build chain from domain to TLD
+            while (currentDomain && currentDomain.includes('.')) {
+                try {
+                    const dsResult = await performDNSSECQuery(currentDomain, 'DS');
+                    const dnskeyResult = await performDNSSECQuery(currentDomain, 'DNSKEY');
+                    
+                    chain.push({
+                        domain: currentDomain,
+                        hasDS: dsResult.records && dsResult.records.length > 0,
+                        hasDNSKEY: dnskeyResult.records && dnskeyResult.records.length > 0,
+                        dsCount: dsResult.records ? dsResult.records.length : 0,
+                        keyCount: dnskeyResult.records ? dnskeyResult.records.length : 0,
+                        status: (dsResult.records && dsResult.records.length > 0 && 
+                               dnskeyResult.records && dnskeyResult.records.length > 0) ? 'secure' : 'insecure'
+                    });
+                } catch (error) {
+                    chain.push({
+                        domain: currentDomain,
+                        error: error.message,
+                        status: 'error'
+                    });
+                    errors.push(`${currentDomain}: ${error.message}`);
+                }
+                
+                // Move to parent domain
+                const parts = currentDomain.split('.');
+                if (parts.length <= 2) break; // Stop at TLD
+                currentDomain = parts.slice(1).join('.');
+            }
+
+            const response = {
+                timestamp: Date.now(),
+                domain,
+                chain,
+                chainLength: chain.length,
+                isFullySecure: chain.every(link => link.status === 'secure'),
+                hasErrors: errors.length > 0,
+                errors,
+                responseTimeMs: Date.now() - startTime
+            };
+
+            dnsCache.set(cacheKey, {
+                data: response,
+                timestamp: Date.now()
+            });
+
+            return response;
+
+        } catch (err) {
+            return {
+                timestamp: Date.now(),
+                domain: request.params.domain.toString(),
+                error: err.message,
+                responseTimeMs: Date.now() - startTime
+            };
+        }
+    }
+};
+
+// DNSSEC Algorithms Analysis
+export const dnssecAlgorithms = {
+    route: '/dns/algorithms/:domain',
+    method: 'get',
+    middleware: [optionalAuthMiddleware],
+    handler: async (request, reply) => {
+        const startTime = Date.now();
+        
+        try {
+            const domain = request.params.domain.toString().toLowerCase();
+            
+            // Algorithm mappings
+            const algorithms = {
+                1: { name: 'RSAMD5', status: 'deprecated', security: 'weak' },
+                3: { name: 'DSA', status: 'deprecated', security: 'weak' },
+                5: { name: 'RSASHA1', status: 'legacy', security: 'moderate' },
+                6: { name: 'DSA-NSEC3-SHA1', status: 'deprecated', security: 'weak' },
+                7: { name: 'RSASHA1-NSEC3-SHA1', status: 'legacy', security: 'moderate' },
+                8: { name: 'RSASHA256', status: 'recommended', security: 'strong' },
+                10: { name: 'RSASHA512', status: 'recommended', security: 'strong' },
+                13: { name: 'ECDSA-P256-SHA256', status: 'recommended', security: 'strong' },
+                14: { name: 'ECDSA-P384-SHA384', status: 'recommended', security: 'strong' },
+                15: { name: 'ED25519', status: 'modern', security: 'excellent' },
+                16: { name: 'ED448', status: 'modern', security: 'excellent' }
+            };
+
+            // Get DNSKEY records
+            const dnskeyResult = await performDNSSECQuery(domain, 'DNSKEY');
+            const dsResult = await performDNSSECQuery(domain, 'DS');
+            
+            const analysis = {
+                dnskeyAlgorithms: [],
+                dsAlgorithms: [],
+                recommendations: [],
+                warnings: [],
+                securityLevel: 'unknown'
+            };
+
+            // Analyze DNSKEY algorithms
+            if (dnskeyResult.dnssecRecords && dnskeyResult.dnssecRecords.dnskey) {
+                dnskeyResult.dnssecRecords.dnskey.forEach(key => {
+                    const alg = algorithms[key.algorithm] || { 
+                        name: `Unknown-${key.algorithm}`, 
+                        status: 'unknown', 
+                        security: 'unknown' 
+                    };
+                    
+                    analysis.dnskeyAlgorithms.push({
+                        algorithm: key.algorithm,
+                        name: alg.name,
+                        status: alg.status,
+                        security: alg.security,
+                        keyType: key.isKSK ? 'KSK' : (key.isZSK ? 'ZSK' : 'Unknown')
+                    });
+                    
+                    // Generate warnings and recommendations
+                    if (alg.status === 'deprecated' || alg.security === 'weak') {
+                        analysis.warnings.push(`${alg.name} is deprecated and should be upgraded`);
+                    }
+                    
+                    if (alg.status === 'legacy') {
+                        analysis.recommendations.push(`Consider upgrading from ${alg.name} to a modern algorithm like ECDSA or ED25519`);
+                    }
+                });
+            }
+
+            // Analyze DS algorithms
+            if (dsResult.dnssecRecords && dsResult.dnssecRecords.ds) {
+                dsResult.dnssecRecords.ds.forEach(ds => {
+                    const alg = algorithms[ds.algorithm] || { 
+                        name: `Unknown-${ds.algorithm}`, 
+                        status: 'unknown', 
+                        security: 'unknown' 
+                    };
+                    
+                    analysis.dsAlgorithms.push({
+                        algorithm: ds.algorithm,
+                        name: alg.name,
+                        status: alg.status,
+                        security: alg.security,
+                        digestType: ds.digestType
+                    });
+                });
+            }
+
+            // Determine overall security level
+            const allAlgorithms = [...analysis.dnskeyAlgorithms, ...analysis.dsAlgorithms];
+            if (allAlgorithms.some(alg => alg.security === 'excellent')) {
+                analysis.securityLevel = 'excellent';
+            } else if (allAlgorithms.some(alg => alg.security === 'strong')) {
+                analysis.securityLevel = 'strong';
+            } else if (allAlgorithms.some(alg => alg.security === 'moderate')) {
+                analysis.securityLevel = 'moderate';
+            } else if (allAlgorithms.some(alg => alg.security === 'weak')) {
+                analysis.securityLevel = 'weak';
+            }
+
+            // General recommendations
+            if (analysis.securityLevel !== 'excellent' && analysis.securityLevel !== 'strong') {
+                analysis.recommendations.push('Consider upgrading to modern algorithms like ECDSA P-256 or ED25519');
+            }
+
+            return {
+                timestamp: Date.now(),
+                domain,
+                analysis,
+                responseTimeMs: Date.now() - startTime
+            };
+
+        } catch (err) {
+            return {
+                timestamp: Date.now(),
+                domain: request.params.domain.toString(),
+                error: err.message,
+                responseTimeMs: Date.now() - startTime
+            };
+        }
+    }
+};
+
+// DNSSEC Health Check Endpoint
+export const dnssecHealth = {
+    route: '/dns/health/:domain',
+    method: 'get',
+    middleware: [optionalAuthMiddleware],
+    handler: async (request, reply) => {
+        const startTime = Date.now();
+        
+        try {
+            const domain = request.params.domain.toString().toLowerCase();
+            
+            // Comprehensive health check
+            const health = {
+                score: 100,
+                grade: 'A+',
+                issues: [],
+                recommendations: [],
+                tests: {}
+            };
+
+            // Test 1: DNSSEC presence
+            try {
+                const dnskeyResult = await performDNSSECQuery(domain, 'DNSKEY');
+                if (dnskeyResult.records && dnskeyResult.records.length > 0) {
+                    health.tests.dnssecEnabled = { status: 'pass', message: 'DNSSEC is enabled' };
+                } else {
+                    health.tests.dnssecEnabled = { status: 'fail', message: 'DNSSEC is not enabled' };
+                    health.score -= 50;
+                    health.issues.push('Domain does not have DNSSEC enabled');
+                    health.recommendations.push('Enable DNSSEC signing for your domain');
+                }
+            } catch (error) {
+                health.tests.dnssecEnabled = { status: 'error', message: error.message };
+                health.score -= 30;
+            }
+
+            // Test 2: DS records in parent
+            try {
+                const dsResult = await performDNSSECQuery(domain, 'DS');
+                if (dsResult.records && dsResult.records.length > 0) {
+                    health.tests.dsRecords = { status: 'pass', message: 'DS records found in parent zone' };
+                } else {
+                    health.tests.dsRecords = { status: 'fail', message: 'No DS records in parent zone' };
+                    health.score -= 30;
+                    health.issues.push('DS records missing in parent zone');
+                    health.recommendations.push('Publish DS records to parent zone');
+                }
+            } catch (error) {
+                health.tests.dsRecords = { status: 'error', message: error.message };
+            }
+
+            // Test 3: Signature validity
+            try {
+                const rrsigResult = await performDNSSECQuery(domain, 'RRSIG');
+                if (rrsigResult.records && rrsigResult.records.length > 0) {
+                    health.tests.signatures = { status: 'pass', message: 'RRSIG records found' };
+                    
+                    // Check expiration
+                    if (rrsigResult.dnssecRecords.rrsig) {
+                        const now = new Date();
+                        let expiringSoon = 0;
+                        
+                        rrsigResult.dnssecRecords.rrsig.forEach(sig => {
+                            if (sig.signatureExpiration && sig.signatureExpiration !== 'Unknown') {
+                                const expDate = new Date(sig.signatureExpiration);
+                                const daysDiff = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 3600 * 24));
+                                
+                                if (daysDiff < 7) expiringSoon++;
+                            }
+                        });
+                        
+                        if (expiringSoon > 0) {
+                            health.score -= 15;
+                            health.issues.push(`${expiringSoon} signatures expire within 7 days`);
+                            health.recommendations.push('Re-sign zone to extend signature validity');
+                        }
+                    }
+                } else {
+                    health.tests.signatures = { status: 'fail', message: 'No RRSIG records found' };
+                    health.score -= 25;
+                    health.issues.push('Zone signatures missing');
+                }
+            } catch (error) {
+                health.tests.signatures = { status: 'error', message: error.message };
+            }
+
+            // Test 4: Algorithm strength
+            try {
+                const dnskeyResult = await performDNSSECQuery(domain, 'DNSKEY');
+                if (dnskeyResult.dnssecRecords && dnskeyResult.dnssecRecords.dnskey) {
+                    const weakAlgorithms = dnskeyResult.dnssecRecords.dnskey.filter(key => 
+                        [1, 3, 5, 6, 7].includes(key.algorithm)
+                    );
+                    
+                    if (weakAlgorithms.length > 0) {
+                        health.tests.algorithms = { status: 'warning', message: 'Using legacy/weak algorithms' };
+                        health.score -= 10;
+                        health.issues.push('Weak cryptographic algorithms detected');
+                        health.recommendations.push('Upgrade to modern algorithms (ECDSA, ED25519)');
+                    } else {
+                        health.tests.algorithms = { status: 'pass', message: 'Using strong algorithms' };
+                    }
+                }
+            } catch (error) {
+                health.tests.algorithms = { status: 'error', message: error.message };
+            }
+
+            // Calculate grade
+            if (health.score >= 90) health.grade = 'A+';
+            else if (health.score >= 80) health.grade = 'A';
+            else if (health.score >= 70) health.grade = 'B';
+            else if (health.score >= 60) health.grade = 'C';
+            else if (health.score >= 50) health.grade = 'D';
+            else health.grade = 'F';
+
+            return {
+                timestamp: Date.now(),
+                domain,
+                health,
+                responseTimeMs: Date.now() - startTime
+            };
+
+        } catch (err) {
+            return {
+                timestamp: Date.now(),
+                domain: request.params.domain.toString(),
+                error: err.message,
+                responseTimeMs: Date.now() - startTime
+            };
         }
     }
 };
