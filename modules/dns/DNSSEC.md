@@ -6,6 +6,7 @@
 ✅ **Biblioteca `dns2`** - Suporte completo a DNSSEC  
 ✅ **Zero dependências externas** - Funciona em qualquer ambiente Node.js  
 ✅ **Performance superior** - Sem spawn de processos externos  
+✅ **Resolver inteligente** - Usa resolver do sistema/container primeiro  
 
 ## Vantagens da Nova Implementação
 
@@ -14,12 +15,17 @@
 3. **Controle completo**: Parsing preciso dos registros DNSSEC
 4. **Timeout configurável**: 5 segundos com 2 tentativas
 5. **Cache otimizado**: Gerenciamento automático de memória
+6. **Resolver inteligente**: 
+   - Primeiro: Resolver do sistema/container (`/etc/resolv.conf`)
+   - Fallback: Resolvers públicos (8.8.8.8, 1.1.1.1, 9.9.9.9)
+   - Logs automáticos dos resolvers detectados
 
 ## Bibliotecas Utilizadas
 
 - **`dns2`**: Consultas DNS avançadas com suporte a DNSSEC
 - **DNS nativo Node.js**: Fallback para registros básicos
 - **Cache integrado**: TTL de 60 segundos
+- **Resolver automático**: Detecta resolvers do sistema via `/etc/resolv.conf`
 
 ## Uso da API
 
@@ -125,41 +131,45 @@ GET /dns/RRSIG/example.com?dnssec=true
 ## Dependências e Requisitos
 
 ### Sistema
-- **dig**: Ferramenta de linha de comando (bind-utils/dnsutils)
-- **Node.js 18+**: Para suporte a child_process moderno
+- **Node.js 18+**: Para suporte ES6 modules e dns2
+- **Biblioteca dns2**: Instalada automaticamente via npm
 - **Timeout de 5 segundos**: Para consultas DNSSEC
+- **Resolver automático**: Usa `/etc/resolv.conf` do container/sistema
 
-### Instalação do dig
+### Resolvers DNS Utilizados
+O módulo usa uma estratégia inteligente de resolvers:
+1. **Primeiro**: Resolvers do sistema (lidos de `/etc/resolv.conf`)
+2. **Fallback**: Resolvers públicos confiáveis:
+   - `8.8.8.8` (Google DNS)
+   - `1.1.1.1` (Cloudflare DNS)  
+   - `9.9.9.9` (Quad9 DNS)
+
+### Instalação
 ```bash
-# Ubuntu/Debian
-sudo apt-get install dnsutils
+# Dependências já incluídas no package.json
+npm install dns2
 
-# CentOS/RHEL/Rocky
-sudo yum install bind-utils
-# ou
-sudo dnf install bind-utils
-
-# Alpine Linux
-sudo apk add bind-tools
+# Em containers Docker, o resolver é configurado automaticamente
+# pelo daemon do Docker via /etc/resolv.conf
 ```
 
 ## Performance e Otimizações
 
 ### Cache DNS
 - **60 segundos de TTL** para todas as consultas
-- **Limpeza automática** a cada ~100 requisições (1% de chance)
-- **Chaves de cache únicas** incluindo flag DNSSEC
+- **Limpeza automática** a cada 60 segundos via `setInterval`
+- **Chaves de cache únicas** incluindo flag DNSSEC (`dnssec_domain_type`)
 
-### Timeouts
-- **5 segundos** para consultas DNSSEC (via dig)
-- **Padrão Node.js** para consultas DNS normais
-- **Kill automático** de processos dig orfãos
+### Timeouts e Retries
+- **5 segundos** para consultas DNSSEC (via dns2)
+- **2 tentativas** automáticas em caso de falha
+- **Sem processos externos** - tudo via bibliotecas Node.js
 
-### Otimizações dig
-- `+time=3`: Timeout por tentativa
-- `+tries=2`: Máximo 2 tentativas
-- `+short`: Saída reduzida quando possível
-- `+cd`: Checking Disabled para consultas independentes
+### Estratégia de Resolvers
+- **Sistema primeiro**: Lê resolvers de `/etc/resolv.conf`
+- **Fallback público**: 8.8.8.8, 1.1.1.1, 9.9.9.9
+- **Log automático**: Mostra resolvers detectados (apenas no desenvolvimento)
+- **Performance otimizada**: Evita latência desnecessária
 
 ## Casos de Uso
 
@@ -187,31 +197,44 @@ curl "localhost:8000/dns/DNSKEY/example.com?dnssec=true"
 
 ## Troubleshooting
 
-### Erro: "dig command not found"
-```bash
-# Instalar ferramenta dig
-sudo apt-get install dnsutils  # Ubuntu/Debian
-sudo yum install bind-utils     # CentOS/RHEL
+### Logs de Resolvers
+Em desenvolvimento, o módulo mostra quais resolvers estão sendo usados:
+```
+[PID] Using DNS servers: [system resolvers] + [public fallbacks]
 ```
 
-### Status "bogus" inesperado
-- Verificar configuração do resolver DNS
-- Testar com outros resolvers públicos
-- Validar manualmente com `dig +dnssec`
+### Problemas Comuns
 
-### Performance degradada
-- Consultas DNSSEC são ~3-5x mais lentas
-- Cache reduz impacto para consultas repetidas
-- Considerar usar `dnssec=false` para consultas rápidas
+#### Status "bogus" inesperado
+- Verificar configuração do resolver DNS no container
+- Testar com outros resolvers (query parameter `?resolver=8.8.8.8`)
+- Verificar conectividade com resolvers DNSSEC
+
+#### Timeouts frequentes
+- Verificar latência dos resolvers do sistema
+- Container pode estar usando resolvers lentos
+- Considerar forçar uso de resolvers públicos via configuração
+
+#### Cache excessivo
+- Cache padrão de 60 segundos
+- Usar `?nocache=true` para bypass (se implementado)
+- Restart do container limpa todo o cache
 
 ## Compatibilidade
 
 ### Versões Suportadas
 - **Node.js**: 18.0+
-- **dig**: 9.11+ (BIND utilities)
-- **Sistema**: Linux, macOS, Windows (com WSL)
+- **dns2**: 2.1.0+ (biblioteca JavaScript nativa)
+- **Sistema**: Linux, macOS, Windows (qualquer ambiente Node.js)
+- **Container**: Docker, Podman, Kubernetes (auto-detecta resolver)
 
-### Limitações
-- **dig obrigatório**: DNSSEC requer ferramenta externa
-- **Timeout fixo**: 5 segundos não configurável
-- **IPv6**: Funciona mas sem otimizações específicas
+### Ambientes Testados
+- **Docker Alpine**: Resolver automático via `/etc/resolv.conf`
+- **Kubernetes**: DNS interno do cluster detectado automaticamente  
+- **Desenvolvimento local**: Usa resolver do sistema operacional
+- **Produção**: Fallback inteligente para resolvers públicos
+
+### Limitações Removidas
+- ❌ **dig não é mais necessário**: Implementação 100% JavaScript
+- ❌ **Sem dependências de sistema**: Funciona em qualquer ambiente Node.js
+- ❌ **Sem spawn de processos**: Performance superior e mais confiável

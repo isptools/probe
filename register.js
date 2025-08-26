@@ -1,8 +1,4 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import axios from 'axios';
-
-const execAsync = promisify(exec);
 
 // Configuração
 const REGISTER_TIMEOUT = 60000;
@@ -63,9 +59,6 @@ export async function detectNetworkSupport() {
  */
 async function performRegistration() {
     try {
-        // Executar git pull antes do registro
-        const gitResult = await performGitPull();
-
         // Usar as configurações globais já detectadas
         const registrationData = {
             version: global.version,
@@ -107,35 +100,6 @@ async function performRegistration() {
         }
         
         return false;
-    }
-}
-
-/**
- * Executa git pull para atualizar o código
- */
-async function performGitPull() {
-    // Sair for ambiente de desenvolvimento
-    if (process.env.NODE_ENV === 'development') {
-        console.log('✗ Git pull skipped: Development environment');
-        return { updated: false, output: 'Development environment' };
-    }
-
-    try {
-        const { stdout, stderr } = await execAsync('git pull', {
-            cwd: process.cwd(),
-            timeout: 30000 // 30 segundos
-        });
-        
-        // Verificar se houve atualizações
-        if (stdout.includes('Already up to date')) {
-            return { updated: false, output: stdout.trim() };
-        } else {
-            console.log('Needed to update codebase.');
-            return { updated: true, output: stdout.trim() };
-        }
-    } catch (error) {
-        console.error('✗ Git pull failed:', error.message);
-        return { updated: false, error: error.message };
     }
 }
 
