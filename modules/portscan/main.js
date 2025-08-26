@@ -7,7 +7,7 @@ import { getTcpProtocolInfo } from './tcp-protocols.js';
 
 // Configuração específica do módulo PORTSCAN
 const PORTSCAN_TIMEOUT = 2000; // 2 segundos para scan de portas
-const MAX_PORTS_LIMIT = 100; // Limite máximo de portas por scan (parametrizável)
+const MAX_PORTS_LIMIT = 200; // Limite máximo de portas por scan
 
 // Lista de portas comuns para scan TCP
 const commonTcpPorts = [21, 22, 23, 25, 53, 80, 110, 143, 443, 993, 995, 1433, 3306, 3389, 5432, 5984, 6379, 8080, 8443, 9200];
