@@ -256,7 +256,10 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                 case 'AAAA':
                     return record.address;
                 case 'MX':
-                    return `${record.priority} ${record.exchange}`;
+                    return {
+                        priority: record.priority,
+                        exchange: record.exchange
+                    };
                 case 'TXT':
                     return Array.isArray(record.data) ? record.data.join('') : record.data;
                 case 'CNAME':
@@ -266,9 +269,22 @@ async function performDNSSECQuery(domain, recordType = 'A') {
                 case 'PTR':
                     return record.data;
                 case 'SOA':
-                    return `${record.primary || record.nsname} ${record.admin || record.hostmaster} ${record.serial} ${record.refresh} ${record.retry} ${record.expiration || record.expire} ${record.minimum || record.minttl}`;
+                    return {
+                        primary: record.primary || record.nsname,
+                        admin: record.admin || record.hostmaster,
+                        serial: record.serial,
+                        refresh: record.refresh,
+                        retry: record.retry,
+                        expiration: record.expiration || record.expire,
+                        minimum: record.minimum || record.minttl
+                    };
                 case 'SRV':
-                    return `${record.priority} ${record.weight} ${record.port} ${record.target || record.name}`;
+                    return {
+                        priority: record.priority,
+                        weight: record.weight,
+                        port: record.port,
+                        target: record.target || record.name
+                    };
                 case 'DNSKEY':
                     const pubKey = record.publicKey;
                     const keyStr = Buffer.isBuffer(pubKey) ? pubKey.toString('base64') : (pubKey ? pubKey.toString() : 'N/A');
@@ -417,7 +433,10 @@ export const dnsModule = {
                         break;
                     case 'MX':
                         result = await dnsPromises.resolveMx(hostname);
-                        result = result.map(mx => `${mx.priority} ${mx.exchange}`);
+                        result = result.map(mx => ({
+                            priority: mx.priority,
+                            exchange: mx.exchange
+                        }));
                         break;
                     case 'TXT':
                         result = await dnsPromises.resolveTxt(hostname);
@@ -434,11 +453,24 @@ export const dnsModule = {
                         break;
                     case 'SOA':
                         const soa = await dnsPromises.resolveSoa(hostname);
-                        result = [`${soa.nsname} ${soa.hostmaster} ${soa.serial} ${soa.refresh} ${soa.retry} ${soa.expire} ${soa.minttl}`];
+                        result = [{
+                            primary: soa.nsname,
+                            admin: soa.hostmaster,
+                            serial: soa.serial,
+                            refresh: soa.refresh,
+                            retry: soa.retry,
+                            expiration: soa.expire,
+                            minimum: soa.minttl
+                        }];
                         break;
                     case 'SRV':
                         result = await dnsPromises.resolveSrv(hostname);
-                        result = result.map(srv => `${srv.priority} ${srv.weight} ${srv.port} ${srv.name}`);
+                        result = result.map(srv => ({
+                            priority: srv.priority,
+                            weight: srv.weight,
+                            port: srv.port,
+                            target: srv.name
+                        }));
                         break;
                     default:
                         // For DNSSEC-specific records, try with native-dnssec-dns if DNSSEC is enabled
