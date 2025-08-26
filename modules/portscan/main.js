@@ -90,8 +90,11 @@ function checkUdpPort(host, port, timeout = 1000) {
 
 		// Preparar pacote específico baseado na porta usando biblioteca
 		const message = getUdpPacket(port, host);
+		
+		// Se não há pacote específico, usar pacote genérico
+		const packet = message || Buffer.from('test');
 
-		client.send(message, 0, message.length, port, host, (err) => {
+		client.send(packet, 0, packet.length, port, host, (err) => {
 			if (err && !resolved) {
 				resolved = true;
 				clearTimeout(timer);
