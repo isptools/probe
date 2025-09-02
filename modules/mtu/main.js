@@ -40,7 +40,7 @@ export const mtuModule = {
 					}
 				} catch (err) {
 					return {
-						"timestamp": Date.now(),
+						"timestamp": new Date().toISOString(),
 						"target": attrIP,
 						"err": 'host not found',
 						"sessionID": sessionID,
@@ -56,7 +56,7 @@ export const mtuModule = {
 			// Executar descoberta de MTU
 			const result = await discoverMTU(targetIP, MTU_TIMEOUT);
 			return {
-				"timestamp": Date.now(),
+				"timestamp": new Date().toISOString(),
 				"target": attrIP,
 				"targetIP": targetIP,
 				"resolvedIPs": resolvedIPs,
@@ -72,7 +72,7 @@ export const mtuModule = {
 
 		} catch (error) {
 			return {
-				"timestamp": Date.now(),
+				"timestamp": new Date().toISOString(),
 				"target": request.params.id,
 				"err": error.message,
 				"sessionID": request.query.sessionID,

@@ -168,7 +168,7 @@ export const tracerouteModule = {
 			debugLog('Params', { attrIP, maxHops, sessionID });
 
 			if (maxHops < 1 || maxHops > 64) {
-				return { timestamp: Date.now(), target: attrIP, err: 'invalid max hops (1-64)', sessionID, responseTimeMs: Date.now() - startTime };
+				return { timestamp: new Date().toISOString(), target: attrIP, err: 'invalid max hops (1-64)', sessionID, responseTimeMs: Date.now() - startTime };
 			}
 
 			// Atualiza sID global preservando faixa
@@ -177,7 +177,7 @@ export const tracerouteModule = {
 
 			const { targetIP, resolvedIPs, ipVersion, err } = await resolveTarget(attrIP);
 			if (err) {
-				return { timestamp: Date.now(), target: attrIP, err, sessionID, ipVersion: 0, responseTimeMs: Date.now() - startTime };
+				return { timestamp: new Date().toISOString(), target: attrIP, err, sessionID, ipVersion: 0, responseTimeMs: Date.now() - startTime };
 			}
 
 			debugLog('Executando rawTraceroute', { targetIP, ipVersion });
@@ -185,11 +185,11 @@ export const tracerouteModule = {
 			try {
 				finalResult = await rawTraceroute(targetIP, maxHops);
 			} catch (rtErr) {
-				return { timestamp: Date.now(), target: attrIP, err: 'raw traceroute failed: ' + rtErr.message, ipVersion, responseTimeMs: Date.now() - startTime };
+				return { timestamp: new Date().toISOString(), target: attrIP, err: 'raw traceroute failed: ' + rtErr.message, ipVersion, responseTimeMs: Date.now() - startTime };
 			}
 
 			return {
-				timestamp: Date.now(),
+				timestamp: new Date().toISOString(),
 				target: attrIP,
 				targetIP,
 				resolvedIPs,
@@ -207,7 +207,7 @@ export const tracerouteModule = {
 			};
 		} catch (error) {
 			debugLog('ERRO CRÍTICO', error.message, error.stack);
-			return { timestamp: Date.now(), target: request.params.id, err: error.message, sessionID: request.query.sessionID, sID: global.sID, responseTimeMs: Date.now() - startTime };
+			return { timestamp: new Date().toISOString(), target: request.params.id, err: error.message, sessionID: request.query.sessionID, sID: global.sID, responseTimeMs: Date.now() - startTime };
 		}
 	}
 };

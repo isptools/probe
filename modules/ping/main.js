@@ -188,17 +188,17 @@ export const ping = {
 			if (res.error) {
 				const errName = res.error === 'ipv6-only (disabled)' ? 'IPv6NotSupportedError' : 'HostNotFoundError';
 				const errMsg = res.error === 'ipv6-only (disabled)' ? 'IPv6 not supported on this probe' : res.error;
-				return { datetime: new Date().toString(), target: input, ms: null, ttl, err: { name: errName, message: errMsg }, sID, query: request.query || {} };
+				return { datetime: new Date().toISOString(), target: input, ms: null, ttl, err: { name: errName, message: errMsg }, sID, query: request.query || {} };
 			}
 			const target = res.version ? res.ips[Math.floor(Math.random() * res.ips.length)] : null;
 			if (!target || !net.isIP(target)) {
-				return { datetime: new Date().toString(), target: target || input, ms: null, ttl, err: { name: 'HostNotFoundError', message: 'host not found' }, sID, query: request.query || {} };
+				return { datetime: new Date().toISOString(), target: target || input, ms: null, ttl, err: { name: 'HostNotFoundError', message: 'host not found' }, sID, query: request.query || {} };
 			}
 			const result = await pingWithTTL(target, ttl, sID);
 			const errObj = buildError(result);
-			return { datetime: new Date().toString(), target, ms: result.alive ? Math.round(result.time) : null, ttl, err: errObj, sID, query: request.query || {} };
+			return { datetime: new Date().toISOString(), target, ms: result.alive ? Math.round(result.time) : null, ttl, err: errObj, sID, query: request.query || {} };
 		} catch (e) {
-			return { datetime: new Date().toString(), target: input, ms: null, ttl, err: { name: 'InternalError', message: e.message }, sID, query: request.query || {} };
+			return { datetime: new Date().toISOString(), target: input, ms: null, ttl, err: { name: 'InternalError', message: e.message }, sID, query: request.query || {} };
 		}
 	}
 };

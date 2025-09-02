@@ -130,7 +130,7 @@ async function portscanHandler(request, reply) {
 				// Validar body obrigatório para POST
 				if (!attrIP || !protocol || !method) {
 					return {
-						"timestamp": Date.now(),
+						"timestamp": new Date().toISOString(),
 						"err": "missing required fields: host, protocol, method",
 						"responseTimeMs": Date.now() - startTime
 					};
@@ -140,7 +140,7 @@ async function portscanHandler(request, reply) {
 			// Validar protocolo
 			if (!['tcp', 'udp'].includes(protocol)) {
 				return {
-					"timestamp": Date.now(),
+					"timestamp": new Date().toISOString(),
 					"protocol": protocol,
 					"method": method,
 					"host": attrIP,
@@ -152,7 +152,7 @@ async function portscanHandler(request, reply) {
 			// Validar método
 			if (!['SINGLE', 'COMMON', 'RANGE', 'CUSTOM'].includes(method)) {
 				return {
-					"timestamp": Date.now(),
+					"timestamp": new Date().toISOString(),
 					"protocol": protocol,
 					"method": method,
 					"host": attrIP,
@@ -182,7 +182,7 @@ async function portscanHandler(request, reply) {
 					}
 				} catch (dnsError) {
 					return {
-						"timestamp": Date.now(),
+						"timestamp": new Date().toISOString(),
 						"protocol": protocol,
 						"method": method,
 						"host": attrIP,
@@ -203,7 +203,7 @@ async function portscanHandler(request, reply) {
 				case 'SINGLE':
 					if (!portsParam) {
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
@@ -214,7 +214,7 @@ async function portscanHandler(request, reply) {
 					const singlePort = parseInt(portsParam);
 					if (isNaN(singlePort) || singlePort < 1 || singlePort > 65535) {
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
@@ -232,7 +232,7 @@ async function portscanHandler(request, reply) {
 				case 'RANGE':
 					if (!portsParam || !portsParam.includes('-')) {
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
@@ -243,7 +243,7 @@ async function portscanHandler(request, reply) {
 					const [startPort, endPort] = portsParam.split('-').map(p => parseInt(p));
 					if (isNaN(startPort) || isNaN(endPort) || startPort < 1 || endPort > 65535 || startPort > endPort) {
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
@@ -253,7 +253,7 @@ async function portscanHandler(request, reply) {
 					}
 					if (endPort - startPort > MAX_PORTS_LIMIT) {
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
@@ -269,7 +269,7 @@ async function portscanHandler(request, reply) {
 				case 'CUSTOM':
 					if (!portsParam) {
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
@@ -292,7 +292,7 @@ async function portscanHandler(request, reply) {
 								const [start, end] = item.split('-').map(p => parseInt(p.trim()));
 								if (isNaN(start) || isNaN(end) || start < 1 || end > 65535 || start > end) {
 									return {
-										"timestamp": Date.now(),
+										"timestamp": new Date().toISOString(),
 										"protocol": protocol,
 										"method": method,
 										"host": attrIP,
@@ -309,7 +309,7 @@ async function portscanHandler(request, reply) {
 								const port = parseInt(item);
 								if (isNaN(port) || port < 1 || port > 65535) {
 									return {
-										"timestamp": Date.now(),
+										"timestamp": new Date().toISOString(),
 										"protocol": protocol,
 										"method": method,
 										"host": attrIP,
@@ -327,7 +327,7 @@ async function portscanHandler(request, reply) {
 					
 					if (customPorts.some(p => isNaN(p) || p < 1 || p > 65535)) {
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
@@ -337,7 +337,7 @@ async function portscanHandler(request, reply) {
 					}
 					if (customPorts.length > MAX_PORTS_LIMIT) {
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"protocol": protocol,
 							"method": method,
 							"host": attrIP,
@@ -378,7 +378,7 @@ async function portscanHandler(request, reply) {
 				.map(r => ({ port: r.port, service: r.serviceName, note: r.securityNote }));
 			
 			const response = {
-				"timestamp": Date.now(),
+				"timestamp": new Date().toISOString(),
 				"responseTimeMs": Date.now() - startTime,
 				"protocol": protocol,
 				"method": method,
@@ -416,7 +416,7 @@ async function portscanHandler(request, reply) {
 
 		} catch (error) {
 			const errorResponse = {
-				"timestamp": Date.now(),
+				"timestamp": new Date().toISOString(),
 				"err": error.message || 'unknown error',
 				"responseTimeMs": Date.now() - startTime
 			};

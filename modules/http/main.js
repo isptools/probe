@@ -135,7 +135,7 @@ export const httpModule = {
 
 			if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
 				return {
-					"timestamp": Date.now(),
+					"timestamp": new Date().toISOString(),
 					"url": attrIP,
 					"err": "invalid URL - need URL encoded - HTTP/HTTPS only",
 					"responseTimeMs": Date.now() - startTime
@@ -162,7 +162,7 @@ export const httpModule = {
 					}
 				} catch (dnsError) {
 					return {
-						"timestamp": Date.now(),
+						"timestamp": new Date().toISOString(),
 						"url": attrIP,
 						"err": 'DNS resolution failed: ' + dnsError.message,
 						"ipVersion": 0,
@@ -199,7 +199,7 @@ export const httpModule = {
 							dnsMs = Date.now() - dnsStart;
 						} catch (dnsError) {
 							reject({
-								"timestamp": Date.now(),
+								"timestamp": new Date().toISOString(),
 								"url": targetUrl,
 								"err": 'DNS resolution failed: ' + dnsError.message,
 								"ipVersion": 0,
@@ -256,7 +256,7 @@ export const httpModule = {
 						}
 
 						resolve({
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"url": url.parse(attrIPoriginal),
 							"targetUrl": targetUrl,
 							"resolvedIPs": currentResolvedIPs,
@@ -295,7 +295,7 @@ export const httpModule = {
 
 					request.on('error', (error) => {
 						reject({
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"url": targetUrl,
 							"resolvedIPs": currentResolvedIPs,
 							"err": (error.message === 'socket hang up') ? 'TIMEOUT' : error.message,
@@ -307,7 +307,7 @@ export const httpModule = {
 					request.setTimeout(HTTP_TIMEOUT, () => {
 						request.destroy();
 						reject({
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"url": targetUrl,
 							"resolvedIPs": currentResolvedIPs,
 							"err": 'TIMEOUT',
@@ -328,7 +328,7 @@ export const httpModule = {
 					} catch (httpError) {
 						// Se HTTP também falhar, retorna o erro mais detalhado
 						return {
-							"timestamp": Date.now(),
+							"timestamp": new Date().toISOString(),
 							"url": request.params.id,
 							"resolvedIPs": httpsError.resolvedIPs || httpError.resolvedIPs,
 							"err": `HTTPS failed: ${httpsError.err || httpsError.message}, HTTP fallback failed: ${httpError.err || httpError.message}`,
@@ -345,7 +345,7 @@ export const httpModule = {
 		} catch (error) {
 			console.error('HTTP Module Error:', error);
 			return {
-				"timestamp": Date.now(),
+				"timestamp": new Date().toISOString(),
 				"url": request.params.id,
 				"err": error.err || error.message || 'Unknown error',
 				"ipVersion": error.ipVersion || 0,

@@ -429,7 +429,7 @@ async function performDNSSECQuery(domain, recordType = 'A') {
             }
         };
 
-        dnsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        dnsCache.set(cacheKey, { data: result, timestamp: new Date().toISOString() });
         return result;
 
     } catch (error) {
@@ -466,7 +466,7 @@ export const dnsModule = {
             const validTypes = ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'PTR', 'SOA', 'SRV', 'CAA', 'DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'TLSA'];
             if (!validTypes.includes(method)) {
                 return {
-                    "timestamp": Date.now(),
+                    "timestamp": new Date().toISOString(),
                     "method": method,
                     "host": hostname,
                     "result": null,
@@ -489,7 +489,7 @@ export const dnsModule = {
             // PTR queries require an IP address
             if (method === "PTR" && !net.isIP(hostname)) {
                 return {
-                    "timestamp": Date.now(),
+                    "timestamp": new Date().toISOString(),
                     "method": method,
                     "host": hostname,
                     "result": null,
@@ -641,7 +641,7 @@ export const dnsModule = {
             }
 
             const response = {
-                "timestamp": Date.now(),
+                "timestamp": new Date().toISOString(),
                 "method": method,
                 "host": hostname,
                 "result": result,
@@ -655,14 +655,14 @@ export const dnsModule = {
             // Cache the response
             dnsCache.set(cacheKey, {
                 result: response,
-                timestamp: Date.now()
+                timestamp: new Date().toISOString()
             });
 
             return response;
 
         } catch (err) {
             const errorResponse = {
-                "timestamp": Date.now(),
+                "timestamp": new Date().toISOString(),
                 "method": request.params.method.toString().toUpperCase(),
                 "host": request.params.id.toString(),
                 "result": null,
@@ -845,7 +845,7 @@ export const dnssecValidate = {
             }
 
             const response = {
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 domain,
                 overallStatus,
                 summary: {
@@ -864,14 +864,14 @@ export const dnssecValidate = {
             // Cache the response
             dnsCache.set(cacheKey, {
                 data: response,
-                timestamp: Date.now()
+                timestamp: new Date().toISOString()
             });
 
             return response;
 
         } catch (err) {
             return {
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 domain: request.params.domain.toString(),
                 overallStatus: 'error',
                 error: err.message,
@@ -940,7 +940,7 @@ export const dnssecChain = {
             }
 
             const response = {
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 domain,
                 chain,
                 chainLength: chain.length,
@@ -952,14 +952,14 @@ export const dnssecChain = {
 
             dnsCache.set(cacheKey, {
                 data: response,
-                timestamp: Date.now()
+                timestamp: new Date().toISOString()
             });
 
             return response;
 
         } catch (err) {
             return {
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 domain: request.params.domain.toString(),
                 error: err.message,
                 responseTimeMs: Date.now() - startTime
@@ -1074,7 +1074,7 @@ export const dnssecAlgorithms = {
             }
 
             return {
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 domain,
                 analysis,
                 responseTimeMs: Date.now() - startTime
@@ -1082,7 +1082,7 @@ export const dnssecAlgorithms = {
 
         } catch (err) {
             return {
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 domain: request.params.domain.toString(),
                 error: err.message,
                 responseTimeMs: Date.now() - startTime
@@ -1210,7 +1210,7 @@ export const dnssecHealth = {
             else health.grade = 'F';
 
             return {
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 domain,
                 health,
                 responseTimeMs: Date.now() - startTime
@@ -1218,7 +1218,7 @@ export const dnssecHealth = {
 
         } catch (err) {
             return {
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 domain: request.params.domain.toString(),
                 error: err.message,
                 responseTimeMs: Date.now() - startTime
