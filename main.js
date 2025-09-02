@@ -54,6 +54,11 @@ fastify.addHook('onRequest', async (request, reply) => {
 		const timestamp = new Date().toISOString().substring(0, 19).replace('T', ' ');
 		const ip = request.headers['x-forwarded-for'] || request.socket.remoteAddress;
 		console.log(`📥 ${timestamp} - ${ip} - ${request.method} ${request.url}`);
+		
+		// Log extra para requisições DNS para debug
+		if (request.url.startsWith('/dns')) {
+			console.log(`🔍 [${global.sID}] DNS Debug - Full URL: ${request.url} | Params: ${JSON.stringify(request.params)} | Query: ${JSON.stringify(request.query)} | Headers: ${JSON.stringify(request.headers)}`);
+		}
 	}
 });
 

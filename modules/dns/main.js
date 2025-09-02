@@ -454,6 +454,9 @@ export const dnsModule = {
     handler: async (request, reply) => {
         const startTime = Date.now();
         
+        // Debug log da URL requisitada
+        console.log(`[${global.sID}] DNS Request - URL: ${request.url} | Method: ${request.params.method} | ID: ${request.params.id} | Query: ${JSON.stringify(request.query)} | IP: ${request.ip}`);
+        
         try {
             const hostname = request.params.id.toString();
             const method = request.params.method.toString().toUpperCase();
@@ -686,6 +689,9 @@ export const dnssecValidate = {
     handler: async (request, reply) => {
         const startTime = Date.now();
         
+        // Debug log da URL requisitada
+        console.log(`[${global.sID}] DNSSEC Validate Request - URL: ${request.url} | Domain: ${request.params.domain} | IP: ${request.ip}`);
+        
         try {
             const domain = request.params.domain.toString().toLowerCase();
             
@@ -883,6 +889,9 @@ export const dnssecChain = {
     handler: async (request, reply) => {
         const startTime = Date.now();
         
+        // Debug log da URL requisitada
+        console.log(`[${global.sID}] DNSSEC Chain Request - URL: ${request.url} | Domain: ${request.params.domain} | IP: ${request.ip}`);
+        
         try {
             const domain = request.params.domain.toString().toLowerCase();
             
@@ -966,6 +975,9 @@ export const dnssecAlgorithms = {
     middleware: [optionalAuthMiddleware],
     handler: async (request, reply) => {
         const startTime = Date.now();
+        
+        // Debug log da URL requisitada
+        console.log(`[${global.sID}] DNSSEC Algorithms Request - URL: ${request.url} | Domain: ${request.params.domain} | IP: ${request.ip}`);
         
         try {
             const domain = request.params.domain.toString().toLowerCase();
@@ -1086,6 +1098,9 @@ export const dnssecHealth = {
     middleware: [optionalAuthMiddleware],
     handler: async (request, reply) => {
         const startTime = Date.now();
+        
+        // Debug log da URL requisitada
+        console.log(`[${global.sID}] DNSSEC Health Request - URL: ${request.url} | Domain: ${request.params.domain} | IP: ${request.ip}`);
         
         try {
             const domain = request.params.domain.toString().toLowerCase();

@@ -11,7 +11,7 @@ let authorizedIPs = [];
 let initialized = false;
 
 // Hostnames cujos IPs devem ser autorizados automaticamente
-const AUTH_HOSTNAMES = ['api.isp.tools', 'auto.isp.tools', 'scripts.isp.tools'];
+const AUTH_HOSTNAMES = ['api.isp.tools', 'auto.isp.tools', 'scripts.isp.tools', 'proxy.isp.tools'];
 
 /**
  * Função para obter informações de IP externo
