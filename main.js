@@ -24,7 +24,7 @@ const fastifyConfig = {
 	pluginTimeout: 10000,
 	requestIdHeader: false,
 	genReqId: false,
-	caseSensitive: true,
+	caseSensitive: false,
 	ignoreTrailingSlash: true,
 	ignoreDuplicateSlashes: true,
 	maxRequestsPerSocket: 0,
