@@ -133,6 +133,18 @@ export const httpModule = {
 			attrIP = injection(attrIP);
 			const parsedUrl = url.parse(attrIP);
 
+			// Validação adicional de URL mais rigorosa
+			try {
+				new URL(attrIP); // Validação usando constructor URL nativo
+			} catch (urlError) {
+				return {
+					"timestamp": new Date().toISOString(),
+					"url": attrIP,
+					"err": "Invalid URL format: " + urlError.message,
+					"responseTimeMs": Date.now() - startTime
+				};
+			}
+
 			if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
 				return {
 					"timestamp": new Date().toISOString(),
@@ -176,6 +188,21 @@ export const httpModule = {
 			const makeRequest = (targetUrl) => {
 				return new Promise(async (resolve, reject) => {
 					const makeStart = Date.now();
+					
+					// Validação adicional de URL antes de fazer a requisição
+					try {
+						new URL(targetUrl); // Validação rigorosa de URL
+					} catch (urlError) {
+						reject({
+							"timestamp": new Date().toISOString(),
+							"url": targetUrl,
+							"err": 'Invalid URL format: ' + urlError.message,
+							"ipVersion": 0,
+							"responseTimeMs": Date.now() - startTime
+						});
+						return;
+					}
+					
 					const currentParsedUrl = url.parse(targetUrl);
 					const isHttps = currentParsedUrl.protocol === 'https:';
 					const client = isHttps ? https : http;
@@ -225,96 +252,108 @@ export const httpModule = {
 					let tlsHandshakeMs = null;
 					let firstByteMs = null;
 
-					const request = client.get(targetUrl, options, (response) => {
-						const responseTime = Date.now() - makeStart;
+					try {
+						const request = client.get(targetUrl, options, (response) => {
+							const responseTime = Date.now() - makeStart;
 
-						// Medir time-to-first-byte se possível
-						response.once('data', () => {
-							if (!firstByteMs) firstByteMs = Date.now() - makeStart;
-						});
-
-						// Capturar detalhes do certificado SSL/TLS e socket info
-						let certificate = null;
-						let socketInfo = null;
-						if (isHttps && response.socket && response.socket.getPeerCertificate) {
-							try {
-								const cert = response.socket.getPeerCertificate(true);
-								certificate = parseCertificate(cert, response.socket, currentParsedUrl.hostname || parsedUrl.hostname);
-								// add raw cert fields for backward compat
-								if (cert && Object.keys(cert).length > 0) {
-									certificate.raw = { serialNumber: cert.serialNumber };
-								}
-								socketInfo = {
-									protocol: response.socket.getProtocol ? response.socket.getProtocol() : null,
-									cipher: response.socket.getCipher ? response.socket.getCipher() : null,
-									authorized: !!response.socket.authorized,
-									authorizationError: response.socket.authorizationError || null
-								};
-							} catch (e) {
-								// ignore certificate parsing failures
-							}
-						}
-
-						resolve({
-							"timestamp": new Date().toISOString(),
-							"url": url.parse(attrIPoriginal),
-							"targetUrl": targetUrl,
-							"resolvedIPs": currentResolvedIPs,
-							"status": response.statusCode,
-							"headers": response.headers,
-							"certificate": certificate,
-							"socket": socketInfo,
-							"timing": {
-								dnsMs: dnsMs,
-								tcpConnectMs: tcpConnectMs,
-								tlsHandshakeMs: tlsHandshakeMs,
-								firstByteMs: firstByteMs,
-								responseMs: responseTime
-							},
-							"err": null,
-							"ipVersion": currentIpVersion,
-							"responseTimeMs": Date.now() - startTime
-						});
-					});
-
-					// instrument socket events for timing
-					request.on('socket', (socket) => {
-						if (!socket) return;
-						socket.on('lookup', (err, address, family, host) => {
-							if (!dnsMs) dnsMs = Date.now() - makeStart;
-						});
-						socket.on('connect', () => {
-							tcpConnectMs = Date.now() - makeStart;
-						});
-						if (socket.on) {
-							socket.on('secureConnect', () => {
-								tlsHandshakeMs = Date.now() - makeStart;
+							// Medir time-to-first-byte se possível
+							response.once('data', () => {
+								if (!firstByteMs) firstByteMs = Date.now() - makeStart;
 							});
-						}
-					});
 
-					request.on('error', (error) => {
+							// Capturar detalhes do certificado SSL/TLS e socket info
+							let certificate = null;
+							let socketInfo = null;
+							if (isHttps && response.socket && response.socket.getPeerCertificate) {
+								try {
+									const cert = response.socket.getPeerCertificate(true);
+									certificate = parseCertificate(cert, response.socket, currentParsedUrl.hostname || parsedUrl.hostname);
+									// add raw cert fields for backward compat
+									if (cert && Object.keys(cert).length > 0) {
+										certificate.raw = { serialNumber: cert.serialNumber };
+									}
+									socketInfo = {
+										protocol: response.socket.getProtocol ? response.socket.getProtocol() : null,
+										cipher: response.socket.getCipher ? response.socket.getCipher() : null,
+										authorized: !!response.socket.authorized,
+										authorizationError: response.socket.authorizationError || null
+									};
+								} catch (e) {
+									// ignore certificate parsing failures
+								}
+							}
+
+							resolve({
+								"timestamp": new Date().toISOString(),
+								"url": url.parse(attrIPoriginal),
+								"targetUrl": targetUrl,
+								"resolvedIPs": currentResolvedIPs,
+								"status": response.statusCode,
+								"headers": response.headers,
+								"certificate": certificate,
+								"socket": socketInfo,
+								"timing": {
+									dnsMs: dnsMs,
+									tcpConnectMs: tcpConnectMs,
+									tlsHandshakeMs: tlsHandshakeMs,
+									firstByteMs: firstByteMs,
+									responseMs: responseTime
+								},
+								"err": null,
+								"ipVersion": currentIpVersion,
+								"responseTimeMs": Date.now() - startTime
+							});
+						});
+
+						// instrument socket events for timing
+						request.on('socket', (socket) => {
+							if (!socket) return;
+							socket.on('lookup', (err, address, family, host) => {
+								if (!dnsMs) dnsMs = Date.now() - makeStart;
+							});
+							socket.on('connect', () => {
+								tcpConnectMs = Date.now() - makeStart;
+							});
+							if (socket.on) {
+								socket.on('secureConnect', () => {
+									tlsHandshakeMs = Date.now() - makeStart;
+								});
+							}
+						});
+
+						request.on('error', (error) => {
+							reject({
+								"timestamp": new Date().toISOString(),
+								"url": targetUrl,
+								"resolvedIPs": currentResolvedIPs,
+								"err": (error.message === 'socket hang up') ? 'TIMEOUT' : error.message,
+								"ipVersion": currentIpVersion,
+								"responseTimeMs": Date.now() - startTime
+							});
+						});
+
+						request.setTimeout(HTTP_TIMEOUT, () => {
+							request.destroy();
+							reject({
+								"timestamp": new Date().toISOString(),
+								"url": targetUrl,
+								"resolvedIPs": currentResolvedIPs,
+								"err": 'TIMEOUT',
+								"ipVersion": currentIpVersion,
+								"responseTimeMs": Date.now() - startTime
+							});
+						});
+					} catch (requestError) {
+						// Captura erros na criação da requisição (ex: URL inválida)
 						reject({
 							"timestamp": new Date().toISOString(),
 							"url": targetUrl,
 							"resolvedIPs": currentResolvedIPs,
-							"err": (error.message === 'socket hang up') ? 'TIMEOUT' : error.message,
+							"err": 'Request creation failed: ' + requestError.message,
 							"ipVersion": currentIpVersion,
 							"responseTimeMs": Date.now() - startTime
 						});
-					});
-
-					request.setTimeout(HTTP_TIMEOUT, () => {
-						request.destroy();
-						reject({
-							"timestamp": new Date().toISOString(),
-							"url": targetUrl,
-							"resolvedIPs": currentResolvedIPs,
-							"err": 'TIMEOUT',
-							"ipVersion": currentIpVersion,
-							"responseTimeMs": Date.now() - startTime
-						});
-					});
+					}
 				});
 			};
 
