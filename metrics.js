@@ -14,14 +14,14 @@ class PrometheusMetrics {
 
     // Verifica se as métricas devem ser coletadas
     isEnabled() {
-        return this.enabled && global.probeID && global.probeID !== 0;
+        return this.enabled;
     }
 
     // Habilita/desabilita coleta de métricas
     setEnabled(enabled) {
         this.enabled = enabled;
-        if (enabled && this.isEnabled()) {
-            console.log(`📊 [${global.sID}] Metrics enabled for probe ID: ${global.probeID}`);
+        if (enabled) {
+            console.log(`📊 [${global.sID}] Metrics enabled`);
         }
     }
 
@@ -254,10 +254,7 @@ class PrometheusMetrics {
     // Gera labels padrão para todas as métricas
     getDefaultLabels() {
         return {
-            probe_id: global.probeID || '0',
-            probe_version: global.version || 'unknown',
-            system_id: global.systemID || 'unknown',
-            instance: process.pid.toString()
+            probe_version: global.version || 'unknown'
         };
     }
 
@@ -473,7 +470,7 @@ class PrometheusMetrics {
     // Gera saída Prometheus
     generatePrometheusOutput() {
         if (!this.isEnabled()) {
-            return '# Metrics disabled - probe not registered (probeID = 0)\n';
+            return '# Metrics disabled\n';
         }
 
         // Atualiza métricas do sistema antes de gerar output
@@ -519,10 +516,8 @@ class PrometheusMetrics {
 // Instância global de métricas
 const metrics = new PrometheusMetrics();
 
-// Habilita métricas quando probeID é definido
-global.enableMetrics = () => {
-    metrics.setEnabled(true);
-};
+// Habilita métricas por padrão
+metrics.setEnabled(true);
 
 // Funções exportadas para uso pelos módulos
 export const recordPingSuccess = (target, duration, ttl, ipVersion) => metrics.recordPingSuccess(target, duration, ttl, ipVersion);
