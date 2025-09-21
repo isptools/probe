@@ -63,7 +63,7 @@ async function performRegistration() {
         // Preparar dados de registro no novo formato
         const registrationData = {
             type: "registration",
-            version: "2.1.4",
+            version: global.version,
             port: global.serverPort || 8000,
             modules: [
                 "dns",
