@@ -4,6 +4,7 @@ import url from 'url';
 import http from 'http';
 import https from 'https';
 import { optionalAuthMiddleware } from '../../auth.js';
+import { recordHttpSuccess, recordHttpFailure, recordSslHandshake, recordSslCertificate, recordApiRequest } from '../../metrics.js';
 
 // Configuração específica do módulo HTTP
 const HTTP_TIMEOUT = 5000; // 5 segundos para requisições HTTP/HTTPS
@@ -303,6 +304,23 @@ export const httpModule = {
 								"ipVersion": currentIpVersion,
 								"responseTimeMs": Date.now() - startTime
 							});
+
+							// Record metrics for successful HTTP request
+							try {
+								const hostname = currentParsedUrl.hostname || parsedUrl.hostname;
+								recordHttpSuccess(targetUrl, response.statusCode, responseTime, hostname);
+								
+								// Record SSL metrics if HTTPS
+								if (isHttps && certificate && tlsHandshakeMs) {
+									recordSslHandshake(hostname, tlsHandshakeMs, currentIpVersion);
+									if (certificate.daysUntilExpiry !== null) {
+										recordSslCertificate(hostname, certificate.daysUntilExpiry, certificate.validForHostname);
+									}
+								}
+							} catch (metricsError) {
+								// Don't fail the request if metrics fail
+								console.warn(`[${global.sID}] Metrics error:`, metricsError.message);
+							}
 						});
 
 						// instrument socket events for timing
@@ -322,6 +340,9 @@ export const httpModule = {
 						});
 
 						request.on('error', (error) => {
+							const hostname = currentParsedUrl.hostname || parsedUrl.hostname;
+							recordHttpFailure(targetUrl, error.message === 'socket hang up' ? 'TIMEOUT' : error.message, hostname);
+							
 							reject({
 								"timestamp": new Date().toISOString(),
 								"url": targetUrl,
@@ -334,6 +355,9 @@ export const httpModule = {
 
 						request.setTimeout(HTTP_TIMEOUT, () => {
 							request.destroy();
+							const hostname = currentParsedUrl.hostname || parsedUrl.hostname;
+							recordHttpFailure(targetUrl, 'TIMEOUT', hostname);
+							
 							reject({
 								"timestamp": new Date().toISOString(),
 								"url": targetUrl,
@@ -379,10 +403,16 @@ export const httpModule = {
 				// Se não é fallback ou erro diferente, retorna o erro
 				return httpsError;
 			});
+			
+			// Record API request metrics
+			recordApiRequest('http', '/http', Date.now() - startTime, result.err ? 'failure' : 'success');
+			
 			return result;
 
 		} catch (error) {
 			console.error('HTTP Module Error:', error);
+			recordApiRequest('http', '/http', Date.now() - startTime, 'error');
+			
 			return {
 				"timestamp": new Date().toISOString(),
 				"url": request.params.id,

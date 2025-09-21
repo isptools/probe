@@ -2,6 +2,7 @@ import { promises as dns } from 'dns';
 import net from 'net';
 import { optionalAuthMiddleware } from '../../auth.js';
 import { discoverMTU } from './mtu-tester.js';
+import { recordMtuDiscovery, recordApiRequest } from '../../metrics.js';
 
 // Configuração específica do módulo MTU
 const MTU_TIMEOUT = 500; // 500ms para descoberta de MTU rápida
@@ -39,6 +40,7 @@ export const mtuModule = {
 						ipVersion = 6;
 					}
 				} catch (err) {
+					recordApiRequest('mtu', '/mtu', Date.now() - startTime, 'failure');
 					return {
 						"timestamp": new Date().toISOString(),
 						"target": attrIP,
@@ -55,6 +57,11 @@ export const mtuModule = {
 
 			// Executar descoberta de MTU
 			const result = await discoverMTU(targetIP, MTU_TIMEOUT);
+			
+			// Record MTU discovery metrics
+			recordMtuDiscovery(targetIP, result.mtu, Date.now() - startTime, result.supportsJumbo, ipVersion);
+			recordApiRequest('mtu', '/mtu', Date.now() - startTime, 'success');
+			
 			return {
 				"timestamp": new Date().toISOString(),
 				"target": attrIP,
@@ -71,6 +78,7 @@ export const mtuModule = {
 			};
 
 		} catch (error) {
+			recordApiRequest('mtu', '/mtu', Date.now() - startTime, 'error');
 			return {
 				"timestamp": new Date().toISOString(),
 				"target": request.params.id,

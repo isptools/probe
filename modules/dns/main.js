@@ -3,6 +3,7 @@ import net from 'net';
 import fs from 'fs';
 import { createRequire } from 'module';
 import { optionalAuthMiddleware } from '../../auth.js';
+import { recordDnsQuerySuccess, recordDnsQueryFailure, recordDnssecStatus, recordApiRequest } from '../../metrics.js';
 
 // Import da biblioteca DNSSEC
 const require = createRequire(import.meta.url);
@@ -465,6 +466,9 @@ export const dnsModule = {
             // Validate DNS record type
             const validTypes = ['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'PTR', 'SOA', 'SRV', 'CAA', 'DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'TLSA'];
             if (!validTypes.includes(method)) {
+                recordDnsQueryFailure(hostname, method, 'INVALID_TYPE', 'system');
+                recordApiRequest('dns', '/dns', Date.now() - startTime, 'failure');
+                
                 return {
                     "timestamp": new Date().toISOString(),
                     "method": method,
@@ -488,6 +492,9 @@ export const dnsModule = {
             
             // PTR queries require an IP address
             if (method === "PTR" && !net.isIP(hostname)) {
+                recordDnsQueryFailure(hostname, method, 'BADFAMILY', 'system');
+                recordApiRequest('dns', '/dns', Date.now() - startTime, 'failure');
+                
                 return {
                     "timestamp": new Date().toISOString(),
                     "method": method,
@@ -658,6 +665,16 @@ export const dnsModule = {
                 timestamp: new Date().toISOString()
             });
 
+            // Record metrics for successful DNS query
+            recordDnsQuerySuccess(hostname, method, Date.now() - startTime, 'system');
+            
+            // Record DNSSEC status if available
+            if (dnssecInfo) {
+                recordDnssecStatus(hostname, dnssecInfo.enabled, dnssecInfo.status, dnssecInfo.records?.DNSKEY?.length || 0);
+            }
+            
+            recordApiRequest('dns', '/dns', Date.now() - startTime, 'success');
+
             return response;
 
         } catch (err) {
@@ -675,6 +692,10 @@ export const dnsModule = {
                 "dnssec": null,
                 "cached": false
             };
+
+            // Record metrics for failed DNS query
+            recordDnsQueryFailure(request.params.id.toString(), request.params.method.toString().toUpperCase(), err.code || 'UNKNOWN', 'system');
+            recordApiRequest('dns', '/dns', Date.now() - startTime, 'failure');
 
             return errorResponse;
         }

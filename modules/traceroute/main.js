@@ -2,6 +2,7 @@ import { promises as dns } from 'dns';
 import net from 'net';
 import raw from 'raw-socket';
 import { optionalAuthMiddleware } from '../../auth.js';
+import { recordTraceroute, recordApiRequest } from '../../metrics.js';
 
 // Constantes de comportamento (manter mesmas semantics/valores)
 const RAW_TIMEOUT_PER_HOP = 700; // ms
@@ -168,6 +169,7 @@ export const tracerouteModule = {
 			debugLog('Params', { attrIP, maxHops, sessionID });
 
 			if (maxHops < 1 || maxHops > 64) {
+				recordApiRequest('traceroute', '/traceroute', Date.now() - startTime, 'failure');
 				return { timestamp: new Date().toISOString(), target: attrIP, err: 'invalid max hops (1-64)', sessionID, responseTimeMs: Date.now() - startTime };
 			}
 
@@ -177,6 +179,7 @@ export const tracerouteModule = {
 
 			const { targetIP, resolvedIPs, ipVersion, err } = await resolveTarget(attrIP);
 			if (err) {
+				recordApiRequest('traceroute', '/traceroute', Date.now() - startTime, 'failure');
 				return { timestamp: new Date().toISOString(), target: attrIP, err, sessionID, ipVersion: 0, responseTimeMs: Date.now() - startTime };
 			}
 
@@ -185,8 +188,13 @@ export const tracerouteModule = {
 			try {
 				finalResult = await rawTraceroute(targetIP, maxHops);
 			} catch (rtErr) {
+				recordApiRequest('traceroute', '/traceroute', Date.now() - startTime, 'failure');
 				return { timestamp: new Date().toISOString(), target: attrIP, err: 'raw traceroute failed: ' + rtErr.message, ipVersion, responseTimeMs: Date.now() - startTime };
 			}
+
+			// Record traceroute metrics
+			recordTraceroute(targetIP, finalResult.hops, Date.now() - startTime, finalResult.reachedDestination, ipVersion);
+			recordApiRequest('traceroute', '/traceroute', Date.now() - startTime, 'success');
 
 			return {
 				timestamp: new Date().toISOString(),
@@ -207,6 +215,8 @@ export const tracerouteModule = {
 			};
 		} catch (error) {
 			debugLog('ERRO CRÍTICO', error.message, error.stack);
+			recordApiRequest('traceroute', '/traceroute', Date.now() - startTime, 'error');
+			
 			return { timestamp: new Date().toISOString(), target: request.params.id, err: error.message, sessionID: request.query.sessionID, sID: global.sID, responseTimeMs: Date.now() - startTime };
 		}
 	}

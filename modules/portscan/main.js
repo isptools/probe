@@ -4,6 +4,7 @@ import dgram from 'dgram';
 import { optionalAuthMiddleware } from '../../auth.js';
 import { getUdpPacket, getProtocolInfo } from './udp-protocols.js';
 import { getTcpProtocolInfo } from './tcp-protocols.js';
+import { recordPortscan, recordApiRequest } from '../../metrics.js';
 
 // Configuração específica do módulo PORTSCAN
 const PORTSCAN_TIMEOUT = 2000; // 2 segundos para scan de portas
@@ -129,6 +130,7 @@ async function portscanHandler(request, reply) {
 				
 				// Validar body obrigatório para POST
 				if (!attrIP || !protocol || !method) {
+					recordApiRequest('portscan', '/portscan', Date.now() - startTime, 'failure');
 					return {
 						"timestamp": new Date().toISOString(),
 						"err": "missing required fields: host, protocol, method",
@@ -139,6 +141,7 @@ async function portscanHandler(request, reply) {
 			
 			// Validar protocolo
 			if (!['tcp', 'udp'].includes(protocol)) {
+				recordApiRequest('portscan', '/portscan', Date.now() - startTime, 'failure');
 				return {
 					"timestamp": new Date().toISOString(),
 					"protocol": protocol,
@@ -151,6 +154,7 @@ async function portscanHandler(request, reply) {
 			
 			// Validar método
 			if (!['SINGLE', 'COMMON', 'RANGE', 'CUSTOM'].includes(method)) {
+				recordApiRequest('portscan', '/portscan', Date.now() - startTime, 'failure');
 				return {
 					"timestamp": new Date().toISOString(),
 					"protocol": protocol,
@@ -181,6 +185,7 @@ async function portscanHandler(request, reply) {
 						ipVersion = 6;
 					}
 				} catch (dnsError) {
+					recordApiRequest('portscan', '/portscan', Date.now() - startTime, 'failure');
 					return {
 						"timestamp": new Date().toISOString(),
 						"protocol": protocol,
@@ -412,6 +417,10 @@ async function portscanHandler(request, reply) {
 
 			response.results = results;
 
+			// Record portscan metrics
+			recordPortscan(targetHost, protocol, Date.now() - startTime, results);
+			recordApiRequest('portscan', '/portscan', Date.now() - startTime, 'success');
+
 			return response;
 
 		} catch (error) {
@@ -432,6 +441,8 @@ async function portscanHandler(request, reply) {
 				errorResponse.method = body.method;
 				errorResponse.host = body.host;
 			}
+			
+			recordApiRequest('portscan', '/portscan', Date.now() - startTime, 'error');
 			
 			return errorResponse;
 		}
