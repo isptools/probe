@@ -6,9 +6,7 @@ const REGISTRATION_INTERVAL = 30 * 60 * 1000; // 30 minutos
 
 let registrationIntervalId = null;
 
-const REGISTER_URL = process.env.NODE_ENV === 'development' 
-    ? 'https://auto.isp.tools/webhook-test/probe'
-    : 'https://auto.isp.tools/webhook/probe';
+const REGISTER_URL = 'https://scripts.isp.tools/register';
 
 /**
  * Testa suporte IPv4 ou IPv6
@@ -59,31 +57,54 @@ export async function detectNetworkSupport() {
  */
 async function performRegistration() {
     try {
-        // Usar as configurações globais já detectadas
+        // Detectar suporte de rede primeiro
+        const { ipv4Result, ipv6Result } = await detectNetworkSupport();
+        
+        // Preparar dados de registro no novo formato
         const registrationData = {
-            version: global.version,
-            pid: process.pid,
-            port: global.serverPort,
-            ipv4: { supported: global.ipv4Support },
-            ipv6: { supported: global.ipv6Support },
-            timestamp: Date.now()
+            type: "registration",
+            version: "2.1.4",
+            port: global.serverPort || 8000,
+            modules: [
+                "dns",
+                "http", 
+                "mtu",
+                "ping",
+                "portscan",
+                "ssl",
+                "traceroute"
+            ],
+            ipv4: ipv4Result,
+            ipv6: ipv6Result
         };
         
         const response = await axios.post(REGISTER_URL, registrationData, {
             timeout: REGISTER_TIMEOUT,
             headers: {
                 'Content-Type': 'application/json',
-                'User-Agent': `ISP.Tools-Probe/${global.version}`,
-                'X-Probe-Version': global.version,
+                'User-Agent': `ISP.Tools-Probe/${global.version || '2.1.4'}`,
+                'X-Probe-Version': global.version || '2.1.4',
                 'X-Probe-PID': process.pid.toString()
             }
         });
         
-        if (response.status === 200) {
-            // Atualizar systemID (IPv4/IPv6 já foram atualizados na detectNetworkSupport)
-            global.systemID = response.data.systemID;
-            
-            return true;
+        if (response.status === 200 && response.data) {
+            // Verificar se a resposta tem o formato esperado
+            if (response.data.status === 'success' && response.data.probeID) {
+                global.probeID = response.data.probeID;
+                
+                console.log(`✓ [${global.sID || process.pid}] Registration successful - Probe ID: ${global.probeID}`);
+                
+                // Habilitar métricas quando probeID é definido e diferente de 0
+                if (global.probeID !== 0 && global.enableMetrics) {
+                    global.enableMetrics();
+                    console.log(`📊 [${global.sID || process.pid}] Metrics enabled for probe ID: ${global.probeID}`);
+                }
+                
+                return true;
+            } else {
+                throw new Error(`Invalid response format: ${JSON.stringify(response.data)}`);
+            }
         }
         
         throw new Error(`Registration failed with status ${response.status}`);
@@ -124,11 +145,22 @@ export async function initializeRegistration() {
     }
     
     // Executar registro inicial
-    await performRegistration();
+    const success = await performRegistration();
+    
+    if (success) {
+        console.log(`✓ [${global.sID || process.pid}] Initial registration completed successfully`);
+    } else {
+        console.log(`✗ [${global.sID || process.pid}] Initial registration failed, will retry in 30 minutes`);
+    }
     
     // Configurar registro periódico a cada 30 minutos
     registrationIntervalId = setInterval(async () => {
-        await performRegistration();
+        const retrySuccess = await performRegistration();
+        if (retrySuccess) {
+            console.log(`✓ [${global.sID || process.pid}] Periodic registration successful`);
+        } else {
+            console.log(`✗ [${global.sID || process.pid}] Periodic registration failed, will retry in 30 minutes`);
+        }
     }, REGISTRATION_INTERVAL);
 }
 

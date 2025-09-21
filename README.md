@@ -88,10 +88,11 @@ Retorna informações sobre a versão, memoria, uptime e PID do processo.
 **Exemplo de resposta:**
 ```json
 {
-  "version": "2.1.0",
-  "updated": true,
+  "version": "2.1.5",
   "auth": false,
   "pid": 12345,
+  "systemID": "sys_abc123xyz",
+  "probeID": 4567,
   "memory": {
     "rss": 123456789,
     "heapTotal": 123456789,
@@ -100,7 +101,12 @@ Retorna informações sobre a versão, memoria, uptime e PID do processo.
   },
   "uptime": 123.45,
   "timestamp": 1721248415123,
-  "responseTimeMs": 2
+  "responseTimeMs": 2,
+  "modules": ["ping", "dns", "http", "portscan", "traceroute", "mtu"],
+  "network": {
+    "ipv4Support": true,
+    "ipv6Support": true
+  }
 }
 ```
 
@@ -225,6 +231,38 @@ curl http://localhost:8000/HTTP/aHR0cDovL2dvb2dsZS5jb20=
 
 - `PORT`: Porta do servidor (padrão: 8000)
 - `OPENSHIFT_NODEJS_PORT`: Compatibilidade com OpenShift
+- `NODE_ENV`: Ambiente de execução (development/production)
+- `SHOW_REQUEST_LOGS`: Habilita logs detalhados de requisições (true/false)
+
+### Variáveis Globais Disponíveis
+
+O sistema disponibiliza as seguintes variáveis globais que podem ser acessadas por qualquer módulo:
+
+- `global.version`: Versão atual da probe (ex: "2.1.5")
+- `global.sID`: ID único baseado no PID do processo
+- `global.serverPort`: Porta do servidor HTTP
+- `global.probeID`: ID único da probe retornado pelo sistema central ISP.Tools
+- `global.systemID`: ID do sistema retornado durante o registro
+- `global.ipv4Support`: Suporte IPv4 detectado automaticamente (boolean)
+- `global.ipv6Support`: Suporte IPv6 detectado automaticamente (boolean)
+- `global.isDev`: Indica se está em modo desenvolvimento (boolean)
+- `global.loadedModules`: Array com informações dos módulos carregados
+
+**Exemplo de uso nos módulos:**
+```javascript
+// Acessar o ID da probe em qualquer módulo
+const currentProbeID = global.probeID;
+
+// Verificar se IPv6 está disponível
+if (global.ipv6Support) {
+    // Executar lógica específica para IPv6
+}
+
+// Usar ID de sessão único
+const sessionId = global.sID;
+```
+
+**Nota importante:** A variável `global.probeID` é inicializada como `0` e é atualizada automaticamente após o primeiro registro bem-sucedido com o sistema central ISP.Tools. O registro ocorre a cada 30 minutos.
 
 ### Timeouts por Módulo
 

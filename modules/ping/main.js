@@ -2,6 +2,7 @@ import { promises as dns } from 'dns';
 import net from 'net';
 import pingus from 'pingus';
 import { optionalAuthMiddleware } from '../../auth.js';
+import { recordPingSuccess, recordPingFailure, recordPingDnsResolution, recordApiRequest } from '../../metrics.js';
 
 // Constantes
 const PING_TIMEOUT = 1000;      // ms
@@ -180,24 +181,54 @@ export const ping = {
 	method: 'get',
 	middleware: [optionalAuthMiddleware],
 	handler: async (request) => {
+		const startTime = Date.now();
 		let ttl = ttlNormalize(parseInt(String(request.params.ttl || '')));
 		const input = String(request.params.id || '');
 		const sID = (global.sID >= 65535) ? 0 : (global.sID + 1 || 0); global.sID = sID;
+		
 		try {
+			const dnsStartTime = Date.now();
 			const res = await resolveHost(input);
+			const dnsEndTime = Date.now();
+			
 			if (res.error) {
 				const errName = res.error === 'ipv6-only (disabled)' ? 'IPv6NotSupportedError' : 'HostNotFoundError';
 				const errMsg = res.error === 'ipv6-only (disabled)' ? 'IPv6 not supported on this probe' : res.error;
+				
+				// Record DNS failure metric
+				recordPingDnsResolution(input, dnsEndTime - dnsStartTime, res.version || 0);
+				recordPingFailure(input, errName, res.version || 0, ttl);
+				recordApiRequest('ping', '/ping', Date.now() - startTime, 'failure');
+				
 				return { datetime: new Date().toISOString(), target: input, ms: null, ttl, err: { name: errName, message: errMsg }, sID, query: request.query || {} };
 			}
+			
 			const target = res.version ? res.ips[Math.floor(Math.random() * res.ips.length)] : null;
 			if (!target || !net.isIP(target)) {
+				recordPingFailure(input, 'HostNotFoundError', res.version || 0, ttl);
+				recordApiRequest('ping', '/ping', Date.now() - startTime, 'failure');
 				return { datetime: new Date().toISOString(), target: target || input, ms: null, ttl, err: { name: 'HostNotFoundError', message: 'host not found' }, sID, query: request.query || {} };
 			}
+			
+			// Record successful DNS resolution
+			recordPingDnsResolution(input, dnsEndTime - dnsStartTime, res.version);
+			
 			const result = await pingWithTTL(target, ttl, sID);
 			const errObj = buildError(result);
+			
+			// Record ping metrics
+			if (result.alive) {
+				recordPingSuccess(target, result.time, ttl, res.version);
+			} else {
+				recordPingFailure(target, result.error || 'timeout', res.version, ttl);
+			}
+			
+			recordApiRequest('ping', '/ping', Date.now() - startTime, result.alive ? 'success' : 'failure');
+			
 			return { datetime: new Date().toISOString(), target, ms: result.alive ? Math.round(result.time) : null, ttl, err: errObj, sID, query: request.query || {} };
 		} catch (e) {
+			recordPingFailure(input, 'InternalError', 0, ttl);
+			recordApiRequest('ping', '/ping', Date.now() - startTime, 'error');
 			return { datetime: new Date().toISOString(), target: input, ms: null, ttl, err: { name: 'InternalError', message: e.message }, sID, query: request.query || {} };
 		}
 	}

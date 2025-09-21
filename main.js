@@ -7,11 +7,13 @@ global.ipv6Support = false;
 global.isDev = process.env.NODE_ENV === 'development';
 global.serverPort = process.env.PORT || 8000;
 global.loadedModules = [];
+global.probeID = 0;
 
 import Fastify from 'fastify';
 import { loadModules } from './loader.js';
 import { initializeAuth, authStatusHandler } from './auth.js';
 import { detectNetworkSupport, initializeRegistration } from './register.js';
+import { generatePrometheusOutput } from './metrics.js';
 
 // Configuração otimizada do Fastify
 const fastifyConfig = {
@@ -77,6 +79,7 @@ fastify.get('/', async (request, reply) => {
 		auth: false,
 		pid: process.pid,
 		systemID: global.systemID || null,
+		probeID: global.probeID || 0,
 		memory: global.memoryCache.memory,
 		uptime: process.uptime(),
 		timestamp: now,
@@ -98,6 +101,12 @@ fastify.get('/health', async () => ({
 	version: global.version,
 	timestamp: new Date().toISOString()
 }));
+
+// Endpoint de métricas Prometheus
+fastify.get('/metrics', async (request, reply) => {
+	reply.type('text/plain; version=0.0.4; charset=utf-8');
+	return generatePrometheusOutput();
+});
 
 // Banner simplificado
 const showBanner = () => {
