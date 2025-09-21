@@ -9,6 +9,8 @@ class PrometheusMetrics {
         this.metrics = new Map();
         this.enabled = false;
         this.startTime = Date.now();
+        this.maxTargets = 1000; // Limite máximo de targets simultâneos
+        this.targetTracker = new Map(); // Track target usage: {labelKey: lastUsed}
         this.initializeMetrics();
     }
 
@@ -271,6 +273,30 @@ class PrometheusMetrics {
         return entries ? `{${entries}}` : '';
     }
 
+    // Gerencia limite de targets para evitar explosão de cardinalidade
+    enforceTargetLimit(labelKey) {
+        if (!labelKey.includes('target=')) return; // Só aplica para métricas com target
+        
+        this.targetTracker.set(labelKey, Date.now());
+        
+        if (this.targetTracker.size <= this.maxTargets) return;
+        
+        // Remove os targets mais antigos
+        const sorted = Array.from(this.targetTracker.entries())
+            .sort((a, b) => a[1] - b[1]); // Ordena por timestamp (mais antigo primeiro)
+        
+        const toRemove = sorted.slice(0, sorted.length - this.maxTargets);
+        
+        for (const [oldLabelKey] of toRemove) {
+            this.targetTracker.delete(oldLabelKey);
+            
+            // Remove das métricas também
+            for (const metric of this.metrics.values()) {
+                metric.values.delete(oldLabelKey);
+            }
+        }
+    }
+
     // Incrementa contador
     incrementCounter(metricName, labels = {}, value = 1) {
         if (!this.isEnabled()) return;
@@ -279,6 +305,8 @@ class PrometheusMetrics {
         if (!metric || metric.type !== 'counter') return;
 
         const labelKey = this.formatLabels(this.combineLabels(labels));
+        this.enforceTargetLimit(labelKey); // Aplica limite de targets
+        
         const currentValue = metric.values.get(labelKey) || 0;
         metric.values.set(labelKey, currentValue + value);
     }
@@ -291,6 +319,8 @@ class PrometheusMetrics {
         if (!metric || metric.type !== 'gauge') return;
 
         const labelKey = this.formatLabels(this.combineLabels(labels));
+        this.enforceTargetLimit(labelKey); // Aplica limite de targets
+        
         metric.values.set(labelKey, value);
     }
 
@@ -302,6 +332,7 @@ class PrometheusMetrics {
         if (!metric || metric.type !== 'histogram') return;
 
         const labelKey = this.formatLabels(this.combineLabels(labels));
+        this.enforceTargetLimit(labelKey); // Aplica limite de targets
         
         // Inicializa histograma se não existir
         if (!metric.values.has(labelKey)) {
@@ -480,6 +511,15 @@ class PrometheusMetrics {
         output += `# HELP isp_probe_metrics_enabled Indicates if metrics collection is enabled\n`;
         output += `# TYPE isp_probe_metrics_enabled gauge\n`;
         output += `isp_probe_metrics_enabled${this.formatLabels(this.getDefaultLabels())} 1\n\n`;
+
+        // Adiciona informações sobre limite de targets
+        output += `# HELP isp_probe_target_limit_max Maximum number of targets tracked simultaneously\n`;
+        output += `# TYPE isp_probe_target_limit_max gauge\n`;
+        output += `isp_probe_target_limit_max${this.formatLabels(this.getDefaultLabels())} ${this.maxTargets}\n\n`;
+
+        output += `# HELP isp_probe_targets_active_total Current number of active targets being tracked\n`;
+        output += `# TYPE isp_probe_targets_active_total gauge\n`;
+        output += `isp_probe_targets_active_total${this.formatLabels(this.getDefaultLabels())} ${this.targetTracker.size}\n\n`;
 
         for (const [metricName, metric] of this.metrics.entries()) {
             if (metric.values.size === 0) continue;
