@@ -1,3 +1,15 @@
+/**
+ * PM2 Ecosystem Configuration
+ * 
+ * IMPORTANTE: As variáveis de ambiente aqui definidas TÊM PRIORIDADE
+ * sobre variáveis do sistema/container. Use process.env.VAR || default
+ * para respeitar variáveis injetadas por Docker/Coolify/systemd.
+ * 
+ * Exemplo: PORT: process.env.PORT || 8000
+ * - Se PORT existe no ambiente (ex: Coolify), usa ela
+ * - Caso contrário, usa o valor padrão 8000
+ */
+
 module.exports = {
   apps: [{
     name: 'isp-probe',
@@ -31,15 +43,15 @@ module.exports = {
 
     env: {
       NODE_ENV: 'production',
-      PORT: 8000
+      PORT: process.env.PORT || 8000
     },
     env_production: {
       NODE_ENV: 'production',
-      PORT: 8000
+      PORT: process.env.PORT || 8000
     },
     env_development: {
       NODE_ENV: 'development',
-      PORT: 8000,
+      PORT: process.env.PORT || 8000,
       SHOW_REQUEST_LOGS: 'true'
     },
     // Configurações de restart
