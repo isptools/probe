@@ -1,6 +1,6 @@
 # ISP Tools Probe - Sistema de Métricas Prometheus
 
-Uma implementação completa de métricas Prometheus para monitoramento avançado da ISP Tools Probe v2.1.6+.
+Uma implementação completa de métricas Prometheus para monitoramento avançado da ISP Tools Probe v2.1.7+.
 
 ## 📊 Visão Geral
 
@@ -274,7 +274,7 @@ Todas as métricas incluem os seguintes labels automaticamente:
 
 ```prometheus
 probe_id="12345"           # ID único da probe no sistema ISP.Tools
-probe_version="2.1.6"      # Versão da probe
+probe_version="2.1.7"      # Versão da probe
 system_id="sys_abc123"     # ID do sistema ISP.Tools
 instance="54321"           # PID do processo (para múltiplos workers)
 ```
@@ -463,5 +463,5 @@ Para adicionar novas métricas:
 5. Teste no endpoint `/metrics`
 
 **Versão:** 1.0.0  
-**Compatível com:** ISP Tools Probe v2.1.6+  
+**Compatível com:** ISP Tools Probe v2.1.7+  
 **Última atualização:** Setembro 2025
