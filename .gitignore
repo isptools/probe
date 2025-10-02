@@ -122,6 +122,8 @@ logs
 ehthumbs.db
 Thumbs.db
 
+.env.example
+
 # IDE files
 #.vscode/
 .idea/

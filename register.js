@@ -111,7 +111,13 @@ async function performRegistration() {
         
     } catch (error) {
         if (error.response) {
-            console.error(`✗ Registration failed: Status ${error.response.status}: ${error.response.data || error.response.statusText}`);
+            // Serializar response.data como JSON para mostrar o motivo completo do erro
+            const errorDetails = typeof error.response.data === 'object' 
+                ? JSON.stringify(error.response.data, null, 2)
+                : error.response.data || error.response.statusText;
+            
+            console.error(`✗ Registration failed: Status ${error.response.status}:`);
+            console.error(errorDetails);
         } else if (error.code === 'ECONNREFUSED') {
             console.error('✗ Registration failed: Connection refused (service may be down)');
         } else if (error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
