@@ -28,7 +28,7 @@
     "delay": 2000
   },
   "dependencies": {
-    "axios": "^1.7.2",
+    "axios": "^1.12.0",
     "dns2": "^2.1.0",
     "fastify": "^4.28.1",
     "native-dnssec-dns": "^0.7.1",
