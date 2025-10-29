@@ -5,10 +5,11 @@ import { optionalAuthMiddleware } from '../../auth.js';
 import { recordApiRequest } from '../../metrics.js';
 
 // Constantes
-const PING_TIMEOUT = 1000;      // ms
-const DNS_CACHE_TTL = 60_000;   // ms
-const DEFAULT_PING_COUNT = 20;  // Número padrão de pings para o smokeping
-const MAX_PING_COUNT = 100;     // Máximo de pings permitidos
+const PING_TIMEOUT = 1000;      		// ms
+const DNS_CACHE_TTL = 60_000;   		// ms
+const DEFAULT_PING_COUNT = 20;  		// Número padrão de pings para o smokeping
+const MAX_PING_COUNT = 100;      		// Máximo de pings permitidos
+const INTERVAL_BETWEEN_PINGS = 10; 	// ms
 
 // Cache DNS (somente sucessos)
 const dnsCache = new Map(); // host -> { ips:[], version:4|6, expires }
@@ -196,7 +197,7 @@ async function smokepingTest(target, ttl, sID, count = DEFAULT_PING_COUNT) {
 		
 		// Pequeno delay entre pings para evitar sobrecarga
 		if (i < count - 1) {
-			await new Promise(resolve => setTimeout(resolve, 100));
+			await new Promise(resolve => setTimeout(resolve, INTERVAL_BETWEEN_PINGS));
 		}
 	}
 	
@@ -209,11 +210,15 @@ function processSmokepingResults(rawResults, target, ttl, count) {
 	const lostPackets = rawResults.filter(ms => ms === -1).length;
 	const lossPct = (lostPackets / rawResults.length) * 100;
 	
+	const sent = rawResults.length;
+	const received = validResults.length;
+	
 	if (validResults.length === 0) {
 		return {
 			target,
 			ttl,
-			count,
+			sent,
+			received,
 			timestamp: new Date().toISOString(),
 			min_ms: null,
 			median_ms: null,
@@ -241,7 +246,8 @@ function processSmokepingResults(rawResults, target, ttl, count) {
 	return {
 		target,
 		ttl,
-		count,
+		sent,
+		received,
 		timestamp: new Date().toISOString(),
 		min_ms,
 		median_ms,
@@ -252,16 +258,18 @@ function processSmokepingResults(rawResults, target, ttl, count) {
 }
 
 export const smokeping = {
-	route: '/smokeping/:id/:ttl?/:count?',
+	route: '/smokeping/:id',
 	method: 'get',
 	middleware: [optionalAuthMiddleware],
 	handler: async (request) => {
 		const startTime = Date.now();
-		let ttl = ttlNormalize(parseInt(String(request.params.ttl || '')));
+		
+		// Pegar parâmetros da query string ao invés da rota
+		let ttl = ttlNormalize(parseInt(String(request.query.ttl || '')) || 128);
 		const input = String(request.params.id || '');
 		
 		// Validar e normalizar count
-		let count = parseInt(String(request.params.count || '')) || DEFAULT_PING_COUNT;
+		let count = parseInt(String(request.query.count || '')) || DEFAULT_PING_COUNT;
 		if (count < 1) count = 1;
 		if (count > MAX_PING_COUNT) count = MAX_PING_COUNT;
 		
