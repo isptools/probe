@@ -24,7 +24,7 @@ RUN git clone https://github.com/isptools/probe.git . && \
 FROM node:20-alpine AS production
 
 LABEL maintainer="Giovane Heleno" \
-      version="2.1.7" \
+      version="2.2.0" \
       description="ISP Tools Probe - Network diagnostic tools"
 
 WORKDIR /app
