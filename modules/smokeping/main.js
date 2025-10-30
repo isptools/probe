@@ -12,7 +12,7 @@ const DEFAULT_PING_COUNT = 20;  		// Número padrão de pings para o smokeping
 const MAX_PING_COUNT = 100;      		// Máximo de pings permitidos
 // Intervalo mínimo entre pings para garantir fechamento do socket e evitar captura de replies pelo socket anterior
 // Mantemos pequeno para não alongar muito a duração total, mas suficiente para dar tempo ao 'close' do pingus.
-const INTERVAL_BETWEEN_PINGS = 100; 	// ms
+const INTERVAL_BETWEEN_PINGS = 10; 	// ms
 
 // Cache DNS (somente sucessos)
 const dnsCache = new Map(); // host -> { ips:[], version:4|6, expires }
