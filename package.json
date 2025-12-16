@@ -1,6 +1,6 @@
 {
   "name": "probe-isptools",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "ISP Tools Probe - Network diagnostic tools",
   "main": "main.js",
   "type": "module",

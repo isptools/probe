@@ -2,6 +2,12 @@
 // Implementação completa de métricas para todos os módulos
 
 import { promises as dns } from 'dns';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
+// Arquivo compartilhado para contadores persistentes entre workers
+const COUNTERS_FILE = join(tmpdir(), 'isp-probe-counters.json');
 
 // Estrutura para armazenar todas as métricas
 class PrometheusMetrics {
@@ -11,7 +17,57 @@ class PrometheusMetrics {
         this.startTime = Date.now();
         this.maxTargets = 1000; // Limite máximo de targets simultâneos
         this.targetTracker = new Map(); // Track target usage: {labelKey: lastUsed}
+        this.counterCache = new Map(); // Cache local de contadores pendentes
+        this.flushInterval = null;
         this.initializeMetrics();
+        this.startCounterFlush();
+    }
+
+    // Inicia flush periódico de contadores para arquivo compartilhado
+    startCounterFlush() {
+        // Flush a cada 1 segundo para minimizar I/O mas manter consistência
+        this.flushInterval = setInterval(() => this.flushCountersToFile(), 1000);
+        // Flush no shutdown
+        process.on('beforeExit', () => this.flushCountersToFile());
+        process.on('SIGTERM', () => { this.flushCountersToFile(); process.exit(0); });
+        process.on('SIGINT', () => { this.flushCountersToFile(); process.exit(0); });
+    }
+
+    // Lê contadores do arquivo compartilhado
+    readSharedCounters() {
+        try {
+            if (existsSync(COUNTERS_FILE)) {
+                const data = readFileSync(COUNTERS_FILE, 'utf8');
+                return JSON.parse(data);
+            }
+        } catch (err) {
+            // Arquivo corrompido ou em uso, retorna vazio
+        }
+        return {};
+    }
+
+    // Escreve contadores no arquivo compartilhado (atomic increment)
+    flushCountersToFile() {
+        if (this.counterCache.size === 0) return;
+        
+        try {
+            // Lê valores atuais
+            const shared = this.readSharedCounters();
+            
+            // Soma valores do cache local
+            for (const [key, value] of this.counterCache.entries()) {
+                shared[key] = (shared[key] || 0) + value;
+            }
+            
+            // Escreve de volta
+            writeFileSync(COUNTERS_FILE, JSON.stringify(shared), 'utf8');
+            
+            // Limpa cache local após flush bem-sucedido
+            this.counterCache.clear();
+        } catch (err) {
+            // Em caso de erro, mantém cache para próxima tentativa
+            console.error(`[metrics] Failed to flush counters: ${err.message}`);
+        }
     }
 
     // Verifica se as métricas devem ser coletadas
@@ -297,7 +353,7 @@ class PrometheusMetrics {
         }
     }
 
-    // Incrementa contador
+    // Incrementa contador (usa cache local + arquivo compartilhado)
     incrementCounter(metricName, labels = {}, value = 1) {
         if (!this.isEnabled()) return;
 
@@ -305,10 +361,38 @@ class PrometheusMetrics {
         if (!metric || metric.type !== 'counter') return;
 
         const labelKey = this.formatLabels(this.combineLabels(labels));
-        this.enforceTargetLimit(labelKey); // Aplica limite de targets
+        this.enforceTargetLimit(labelKey);
         
+        // Chave única para arquivo compartilhado: metricName + labels
+        const sharedKey = `${metricName}${labelKey}`;
+        
+        // Acumula no cache local (será enviado para arquivo no flush)
+        const currentCache = this.counterCache.get(sharedKey) || 0;
+        this.counterCache.set(sharedKey, currentCache + value);
+        
+        // Atualiza valor local também para leitura imediata (será sobrescrito no generateOutput)
         const currentValue = metric.values.get(labelKey) || 0;
         metric.values.set(labelKey, currentValue + value);
+    }
+
+    // Sincroniza contadores do arquivo compartilhado para output
+    syncCountersFromFile() {
+        const shared = this.readSharedCounters();
+        
+        for (const [sharedKey, value] of Object.entries(shared)) {
+            // Extrai metricName e labelKey do sharedKey
+            // Formato: metricName{label1="value1",label2="value2"}
+            const match = sharedKey.match(/^([^{]+)(\{.*\})?$/);
+            if (!match) continue;
+            
+            const metricName = match[1];
+            const labelKey = match[2] || '';
+            
+            const metric = this.metrics.get(metricName);
+            if (metric && metric.type === 'counter') {
+                metric.values.set(labelKey, value);
+            }
+        }
     }
 
     // Define valor de gauge
@@ -359,74 +443,72 @@ class PrometheusMetrics {
 
     // PING Metrics
     recordPingSuccess(target, duration, ttl, ipVersion) {
-        this.incrementCounter('isp_ping_success_total', { target, ip_version: ipVersion });
-        this.observeHistogram('isp_ping_duration_seconds', duration / 1000, { target, ip_version: ipVersion, ttl: ttl.toString() });
+        this.incrementCounter('isp_ping_success_total', { ip_version: ipVersion });
+        this.observeHistogram('isp_ping_duration_seconds', duration / 1000, { ip_version: ipVersion, ttl: ttl.toString() });
     }
 
     recordPingFailure(target, errorType, ipVersion, ttl) {
-        this.incrementCounter('isp_ping_failure_total', { target, ip_version: ipVersion, error_type: errorType, ttl: ttl.toString() });
+        this.incrementCounter('isp_ping_failure_total', { ip_version: ipVersion, error_type: errorType, ttl: ttl.toString() });
     }
 
     recordPingDnsResolution(target, duration, ipVersion) {
-        this.observeHistogram('isp_ping_dns_resolution_duration_seconds', duration / 1000, { target, ip_version: ipVersion });
+        this.observeHistogram('isp_ping_dns_resolution_duration_seconds', duration / 1000, { ip_version: ipVersion });
     }
 
     // DNS Metrics
     recordDnsQuerySuccess(host, recordType, duration, server) {
-        this.incrementCounter('isp_dns_query_success_total', { host, record_type: recordType, server });
-        this.observeHistogram('isp_dns_query_duration_seconds', duration / 1000, { host, record_type: recordType, server });
+        this.incrementCounter('isp_dns_query_success_total', { record_type: recordType, server });
+        this.observeHistogram('isp_dns_query_duration_seconds', duration / 1000, { record_type: recordType, server });
     }
 
     recordDnsQueryFailure(host, recordType, errorType, server) {
-        this.incrementCounter('isp_dns_query_failure_total', { host, record_type: recordType, error_type: errorType, server });
+        this.incrementCounter('isp_dns_query_failure_total', { record_type: recordType, error_type: errorType, server });
     }
 
     recordDnssecStatus(domain, enabled, status, dnskeyCount = 0) {
-        this.setGauge('isp_dnssec_enabled', enabled ? 1 : 0, { domain });
+        this.setGauge('isp_dnssec_enabled', enabled ? 1 : 0, {});
         
         let statusValue = 0; // insecure
         if (status === 'secure') statusValue = 1;
         else if (status === 'bogus') statusValue = 2;
         
-        this.setGauge('isp_dnssec_status', statusValue, { domain, status });
+        this.setGauge('isp_dnssec_status', statusValue, { status });
         
         if (dnskeyCount > 0) {
-            this.setGauge('isp_dnssec_dnskey_records_total', dnskeyCount, { domain });
+            this.setGauge('isp_dnssec_dnskey_records_total', dnskeyCount, {});
         }
     }
 
     // HTTP Metrics
     recordHttpSuccess(url, statusCode, duration, hostname) {
-        this.incrementCounter('isp_http_request_success_total', { url, status_code: statusCode.toString(), hostname });
-        this.observeHistogram('isp_http_request_duration_seconds', duration / 1000, { url, status_code: statusCode.toString(), hostname });
+        this.incrementCounter('isp_http_request_success_total', { status_code: statusCode.toString() });
+        this.observeHistogram('isp_http_request_duration_seconds', duration / 1000, { status_code: statusCode.toString() });
     }
 
     recordHttpFailure(url, errorType, hostname) {
-        this.incrementCounter('isp_http_request_failure_total', { url, error_type: errorType, hostname });
+        this.incrementCounter('isp_http_request_failure_total', { error_type: errorType });
     }
 
     recordSslHandshake(hostname, duration, ipVersion) {
-        this.observeHistogram('isp_ssl_handshake_duration_seconds', duration / 1000, { hostname, ip_version: ipVersion });
+        this.observeHistogram('isp_ssl_handshake_duration_seconds', duration / 1000, { ip_version: ipVersion });
     }
 
     recordSslCertificate(hostname, daysUntilExpiry, isValid) {
-        this.setGauge('isp_ssl_certificate_expiry_days', daysUntilExpiry, { hostname });
-        this.setGauge('isp_ssl_certificate_valid', isValid ? 1 : 0, { hostname });
+        this.setGauge('isp_ssl_certificate_expiry_days', daysUntilExpiry, {});
+        this.setGauge('isp_ssl_certificate_valid', isValid ? 1 : 0, {});
     }
 
     // Traceroute Metrics
     recordTraceroute(target, hops, totalDuration, destinationReached, ipVersion) {
-        this.setGauge('isp_traceroute_hops_total', hops.length, { target, ip_version: ipVersion });
-        this.setGauge('isp_traceroute_destination_reached', destinationReached ? 1 : 0, { target, ip_version: ipVersion });
-        this.observeHistogram('isp_traceroute_total_duration_seconds', totalDuration / 1000, { target, ip_version: ipVersion });
+        this.setGauge('isp_traceroute_hops_total', hops.length, { ip_version: ipVersion });
+        this.setGauge('isp_traceroute_destination_reached', destinationReached ? 1 : 0, { ip_version: ipVersion });
+        this.observeHistogram('isp_traceroute_total_duration_seconds', totalDuration / 1000, { ip_version: ipVersion });
 
         // Record individual hop metrics
         hops.forEach((hop, index) => {
             if (hop.responseTime) {
                 this.observeHistogram('isp_traceroute_hop_duration_seconds', hop.responseTime / 1000, {
-                    target,
                     hop_number: (index + 1).toString(),
-                    hop_ip: hop.ip || 'timeout',
                     ip_version: ipVersion
                 });
             }
@@ -435,7 +517,7 @@ class PrometheusMetrics {
 
     // Portscan Metrics
     recordPortscan(target, protocol, duration, results) {
-        this.observeHistogram('isp_portscan_duration_seconds', duration / 1000, { target, protocol });
+        this.observeHistogram('isp_portscan_duration_seconds', duration / 1000, { protocol });
 
         let openPorts = 0;
         let closedPorts = 0;
@@ -450,7 +532,6 @@ class PrometheusMetrics {
             // Record individual port response time
             if (result.responseTime) {
                 this.observeHistogram('isp_portscan_port_response_time', result.responseTime / 1000, {
-                    target,
                     port: result.port.toString(),
                     protocol: result.protocol,
                     status: result.status
@@ -458,15 +539,15 @@ class PrometheusMetrics {
             }
         });
 
-        this.incrementCounter('isp_portscan_ports_open_total', { target, protocol }, openPorts);
-        this.incrementCounter('isp_portscan_ports_closed_total', { target, protocol }, closedPorts);
+        this.incrementCounter('isp_portscan_ports_open_total', { protocol }, openPorts);
+        this.incrementCounter('isp_portscan_ports_closed_total', { protocol }, closedPorts);
     }
 
     // MTU Metrics
     recordMtuDiscovery(target, discoveredMtu, duration, supportsJumbo, ipVersion) {
-        this.setGauge('isp_mtu_discovered_bytes', discoveredMtu, { target, ip_version: ipVersion });
-        this.observeHistogram('isp_mtu_discovery_duration_seconds', duration / 1000, { target, ip_version: ipVersion });
-        this.setGauge('isp_mtu_jumbo_frames_supported', supportsJumbo ? 1 : 0, { target, ip_version: ipVersion });
+        this.setGauge('isp_mtu_discovered_bytes', discoveredMtu, { ip_version: ipVersion });
+        this.observeHistogram('isp_mtu_discovery_duration_seconds', duration / 1000, { ip_version: ipVersion });
+        this.setGauge('isp_mtu_jumbo_frames_supported', supportsJumbo ? 1 : 0, { ip_version: ipVersion });
     }
 
     // Probe System Metrics
@@ -503,6 +584,10 @@ class PrometheusMetrics {
         if (!this.isEnabled()) {
             return '# Metrics disabled\n';
         }
+
+        // Flush contadores pendentes e sincroniza do arquivo compartilhado
+        this.flushCountersToFile();
+        this.syncCountersFromFile();
 
         // Atualiza métricas do sistema antes de gerar output
         this.updateSystemMetrics();
