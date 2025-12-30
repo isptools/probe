@@ -1,5 +1,5 @@
 // Configurações globais
-global.version = "2.2.3";
+global.version = "2.2.4";
 global.sID = process.pid; // ID único baseado no PID (mais simples)
 global.showRequestLogs = process.env.SHOW_REQUEST_LOGS === 'true';
 global.ipv4Support = false;

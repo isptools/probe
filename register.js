@@ -1,4 +1,8 @@
 import axios from 'axios';
+import { createHash } from 'crypto';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 // Configuração
 const REGISTER_TIMEOUT = 60000;
@@ -7,6 +11,93 @@ const REGISTRATION_INTERVAL = 30 * 60 * 1000; // 30 minutos
 let registrationIntervalId = null;
 
 const REGISTER_URL = 'https://scripts.isp.tools/register';
+
+// Caminho para arquivo de persistência do hash
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROBE_HASH_FILE = join(__dirname, '.probe-hash');
+
+// Cache do hash em memória
+let cachedProbeHash = null;
+
+/**
+ * Lê o machine-id do sistema operacional Linux
+ * @returns {string|null} Machine ID ou null se não disponível
+ */
+function getMachineId() {
+    const machineIdPaths = [
+        '/etc/machine-id',
+        '/var/lib/dbus/machine-id'
+    ];
+    
+    for (const path of machineIdPaths) {
+        try {
+            if (existsSync(path)) {
+                const machineId = readFileSync(path, 'utf8').trim();
+                if (machineId && machineId.length > 0) {
+                    return machineId;
+                }
+            }
+        } catch (error) {
+            // Continua para o próximo caminho
+        }
+    }
+    
+    // Fallback: usar hostname + pid como identificador único
+    return `fallback-${process.env.HOSTNAME || 'unknown'}-${process.pid}`;
+}
+
+/**
+ * Gera ou recupera o hash único da probe
+ * Na primeira execução, cria um hash baseado no machine-id + timestamp
+ * Nas execuções seguintes, recupera o hash persistido
+ * @returns {string} Hash único da probe
+ */
+function getOrCreateProbeHash() {
+    // Retorna do cache se disponível
+    if (cachedProbeHash) {
+        return cachedProbeHash;
+    }
+    
+    // Tenta carregar hash existente
+    try {
+        if (existsSync(PROBE_HASH_FILE)) {
+            const savedData = JSON.parse(readFileSync(PROBE_HASH_FILE, 'utf8'));
+            if (savedData.hash && savedData.createdAt) {
+                cachedProbeHash = savedData.hash;
+                console.log(`✓ [${global.sID || process.pid}] Probe hash loaded (created: ${savedData.createdAt})`);
+                return cachedProbeHash;
+            }
+        }
+    } catch (error) {
+        console.warn(`⚠ [${global.sID || process.pid}] Failed to load probe hash: ${error.message}`);
+    }
+    
+    // Gera novo hash na primeira execução
+    const machineId = getMachineId();
+    const createdAt = new Date().toISOString();
+    const timestamp = Date.now();
+    
+    // Combina machine-id + timestamp para criar hash único
+    const dataToHash = `${machineId}:${timestamp}:${createdAt}`;
+    const hash = createHash('sha256').update(dataToHash).digest('hex');
+    
+    // Persistir hash para uso futuro
+    try {
+        const hashData = {
+            hash,
+            machineId: machineId.substring(0, 8) + '...', // Salva parcialmente por privacidade
+            createdAt,
+            timestamp
+        };
+        writeFileSync(PROBE_HASH_FILE, JSON.stringify(hashData, null, 2), 'utf8');
+        console.log(`✓ [${global.sID || process.pid}] New probe hash generated and saved`);
+    } catch (error) {
+        console.warn(`⚠ [${global.sID || process.pid}] Failed to save probe hash: ${error.message}`);
+    }
+    
+    cachedProbeHash = hash;
+    return hash;
+}
 
 /**
  * Testa suporte IPv4 ou IPv6
@@ -60,11 +151,15 @@ async function performRegistration() {
         // Detectar suporte de rede primeiro
         const { ipv4Result, ipv6Result } = await detectNetworkSupport();
         
+        // Obter ou criar hash único da probe
+        const probeHash = getOrCreateProbeHash();
+        
         // Preparar dados de registro no novo formato
         const registrationData = {
             type: "registration",
             version: global.version,
             port: global.serverPort || 8000,
+            probeHash: probeHash,
             modules: [
                 "dns",
                 "http", 

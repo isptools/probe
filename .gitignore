@@ -8,6 +8,9 @@ package-lock.json
 
 old/
 
+# Probe hash (unique identifier per installation)
+.probe-hash
+
 # Runtime data
 pids
 *.pid
