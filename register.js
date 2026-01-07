@@ -197,6 +197,7 @@ async function performRegistration() {
             // Verificar se a resposta tem o formato esperado
             if (response.data.status === 'success' && response.data.probeID) {
                 global.probeID = response.data.probeID;
+                global.isRegistered = true;
                 
                 console.log(`✓ [${global.sID || process.pid}] Registration successful - Probe ID: ${global.probeID}`);
                 

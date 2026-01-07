@@ -80,6 +80,7 @@ fastify.get('/', async (request, reply) => {
 		pid: process.pid,
 		probeHash: global.probeHash || null,
 		probeIPs: global.probeIPs || { ipv4: null, ipv6: null },
+		isRegistered: global.isRegistered || false,
 		memory: global.memoryCache.memory,
 		uptime: process.uptime(),
 		timestamp: now,
