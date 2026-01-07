@@ -1,5 +1,5 @@
 // Configurações globais
-global.version = "2.2.4";
+global.version = "2.2.5";
 global.sID = process.pid; // ID único baseado no PID (mais simples)
 global.showRequestLogs = process.env.SHOW_REQUEST_LOGS === 'true';
 global.ipv4Support = false;
@@ -78,8 +78,8 @@ fastify.get('/', async (request, reply) => {
 		version: global.version,
 		auth: false,
 		pid: process.pid,
-		systemID: global.systemID || null,
-		probeID: global.probeID || 0,
+		probeHash: global.probeHash || null,
+		probeIPs: global.probeIPs || { ipv4: null, ipv6: null },
 		memory: global.memoryCache.memory,
 		uptime: process.uptime(),
 		timestamp: now,

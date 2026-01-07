@@ -1,8 +1,8 @@
-# ISP Tools Probe v2.2.4
+# ISP Tools Probe v2.2.5
 
 Uma ferramenta de diagnóstico de rede modernizada para Node.js v23.7+, fornecendo APIs para testes de conectividade, DNS e HTTP.
 
-## 🚀 Mudanças da Versão 2.1.0 para 2.2.4
+## 🚀 Mudanças da Versão 2.1.0 para 2.2.5
 
 ### ⚡ Cluster Mode para Alta Performance
 - ✅ **Node.js Cluster**: Implementação completa de cluster para múltiplos workers
@@ -88,7 +88,7 @@ Retorna informações sobre a versão, memoria, uptime e PID do processo.
 **Exemplo de resposta:**
 ```json
 {
-  "version": "2.2.4",
+  "version": "2.2.5",
   "auth": false,
   "pid": 12345,
   "systemID": "sys_abc123xyz",
@@ -238,7 +238,7 @@ curl http://localhost:8000/HTTP/aHR0cDovL2dvb2dsZS5jb20=
 
 O sistema disponibiliza as seguintes variáveis globais que podem ser acessadas por qualquer módulo:
 
-- `global.version`: Versão atual da probe (ex: "2.2.4")
+- `global.version`: Versão atual da probe (ex: "2.2.5")
 - `global.sID`: ID único baseado no PID do processo
 - `global.serverPort`: Porta do servidor HTTP
 - `global.probeID`: ID único da probe retornado pelo sistema central ISP.Tools

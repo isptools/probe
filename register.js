@@ -140,6 +140,15 @@ export async function detectNetworkSupport() {
     global.ipv4Support = ipv4Result.supported;
     global.ipv6Support = ipv6Result.supported;
     
+    // Atualizar IPs detectados
+    global.probeIPs = {
+        ipv4: ipv4Result.ip || null,
+        ipv6: ipv6Result.ip || null
+    };
+    
+    // Inicializar probeHash cedo (antes do servidor iniciar)
+    global.probeHash = getOrCreateProbeHash();
+    
     return { ipv4Result, ipv6Result };
 }
 
@@ -153,6 +162,7 @@ async function performRegistration() {
         
         // Obter ou criar hash único da probe
         const probeHash = getOrCreateProbeHash();
+        global.probeHash = probeHash;
         
         // Preparar dados de registro no novo formato
         const registrationData = {
