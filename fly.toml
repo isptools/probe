@@ -1,19 +1,20 @@
-# fly.toml app configuration file generated for probe-upvnxg on 2026-01-07T14:24:21Z
+# fly.toml app configuration file generated for probe-hpaj6w on 2026-02-11T12:13:54Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'probe-upvnxg'
-primary_region = 'gru'
+app = 'probe-hpaj6w'
+primary_region = 'iad'
 
 [build]
 
-[[services]]
-  protocol = "tcp"
+[http_service]
   internal_port = 8000
-
-  [[services.ports]]
-    port = 8000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
   memory = '1gb'
