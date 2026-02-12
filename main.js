@@ -19,21 +19,21 @@ import { generatePrometheusOutput } from './metrics.js';
 const fastifyConfig = {
 	logger: false,
 	trustProxy: true,
-	maxParamLength: 256,
 	bodyLimit: 512000,
 	keepAliveTimeout: 7200000,    // 2 horas
 	connectionTimeout: 300000,    // 5 minutos 
 	pluginTimeout: 10000,
 	requestIdHeader: false,
-	genReqId: false,
-	caseSensitive: false,
-	ignoreTrailingSlash: true,
-	ignoreDuplicateSlashes: true,
 	maxRequestsPerSocket: 0,
-	jsonLimit: 512000,
 	http2SessionTimeout: 7200000,
 	onProtoPoisoning: 'ignore',
-	onConstructorPoisoning: 'ignore'
+	onConstructorPoisoning: 'ignore',
+	routerOptions: {
+		caseSensitive: false,
+		ignoreTrailingSlash: true,
+		ignoreDuplicateSlashes: true,
+		maxParamLength: 256
+	}
 };
 
 const fastify = Fastify(fastifyConfig);
