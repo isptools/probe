@@ -242,6 +242,9 @@ export const httpModule = {
 					const options = {
 						timeout: HTTP_TIMEOUT,
 						family: currentIpVersion === 6 ? 6 : (currentIpVersion === 4 ? 4 : 0),
+						headers: {
+							'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+						},
 						...(isHttps && {
 							rejectUnauthorized: false,
 							requestCert: true,
